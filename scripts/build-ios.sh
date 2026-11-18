@@ -123,7 +123,7 @@ sips -z 1024 1024 "$ICON_SRC" --out "$ICONSET/AppIcon1024.png"         > /dev/nu
 APP="$ROOT/build/ios/xcode/Release-iphoneos/Quake3e.app"
 rm -f "$APP/Quake3e"
 xcodebuild -project "$SPIKE/Quake3e.xcodeproj" -target Quake3e -configuration Release \
-  -sdk iphoneos -allowProvisioningUpdates ONLY_ACTIVE_ARCH=NO \
+  -sdk iphoneos -destination 'generic/platform=iOS' ONLY_ACTIVE_ARCH=NO ENABLE_BITCODE=NO \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   ${Q3E_DEV_DEFS:+GCC_PREPROCESSOR_DEFINITIONS="$Q3E_DEV_DEFS"} \
   SYMROOT="$ROOT/build/ios/xcode" build > "$ROOT/build/ios/xcodebuild.log" 2>&1 \
