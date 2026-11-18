@@ -1,0 +1,79 @@
+name: Build Quake3e iOS IPA
+
+on:
+  push:
+    branches: [fix/a13-vulkan-pipeline-crash]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quake3e-ios-ipa
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew update
+          brew install xcodegen molten-vk vulkan-loader
+
+      - name: Fetch pinned Quake3e engine
+        run: |
+          mkdir -p vendor
+          git clone https://github.com/ec-/Quake3e vendor/Quake3e
+          ENGINE_COMMIT="$(awk '$1 == "commit" {print $3}' upstream.pin)"
+          git -C vendor/Quake3e checkout "$ENGINE_COMMIT"
+          test "$(git -C vendor/Quake3e rev-parse HEAD)" = "$ENGINE_COMMIT"
+
+      - name: Fetch MoltenVK 1.4.2 for iOS
+        run: scripts/fetch-moltenvk-ios.sh
+
+      - name: Build native Vulkan reference and iOS dependencies
+        run: |
+          scripts/build-oracle.sh
+          scripts/build-ios-deps.sh
+
+      - name: Build unsigned iOS app
+        env:
+          CODE_SIGNING_ALLOWED: "NO"
+        run: scripts/build-ios.sh
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP="build/ios/xcode/Release-iphoneos/Quake3e.app"
+          test -d "$APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/Quake3e.app
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload Quake3e-A13-diagnostics-iOS.ipa
+          test -s Quake3e-A13-diagnostics-iOS.ipa
+          unzip -l Quake3e-A13-diagnostics-iOS.ipa | head -35
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Quake3e-A13-diagnostics-iOS
+          path: Quake3e-A13-diagnostics-iOS.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Quake3e-build-logs
+          path: |
+            build/oracle-*-make.log
+            build/ios/xcodebuild.log
+            build/ios-deps/curl-configure.log
+            build/ios-deps/curl-make.log
+          if-no-files-found: ignore
+          retention-days: 7
