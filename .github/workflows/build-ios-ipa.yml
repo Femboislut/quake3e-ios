@@ -8,9 +8,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: quake3e-ios-ipa
-  cancel-in-progress: true
 
 jobs:
   build-ios:
