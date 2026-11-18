@@ -167,6 +167,13 @@ void Q3E_Shell_SetFPSCounter(int enabled) {
 - (void)bootEngineNow {
     [UIApplication sharedApplication].idleTimerDisabled = YES;
 
+    // Temporary A13/iOS 27 Vulkan diagnostics. MoltenVK otherwise reports
+    // pipeline/shader translation failures only to the device log; level 4
+    // makes the underlying Metal compiler error visible during this test.
+    // Set before the first Vulkan call in Q3E_BootEngine().
+    setenv("MVK_CONFIG_LOG_LEVEL", "4", 1);
+    NSLog(@"Q3E-MVK-DIAGNOSTICS: MoltenVK log level set to DEBUG");
+
     void Q3E_PakMan_Startup(void); // apply queued add-on deletions pre-boot
     Q3E_PakMan_Startup();
 
