@@ -5,6 +5,7 @@
 
 #import <UIKit/UIKit.h>
 #import <QuartzCore/CAMetalLayer.h>
+#include <stdlib.h>
 #import "ios_input.h"
 #import "ios_mouse.h"
 
