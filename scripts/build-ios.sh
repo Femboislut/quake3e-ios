@@ -13,7 +13,7 @@ OVERLAY=$ROOT/build/src-overlay
 SPIKE=$ROOT/ios
 OBJDIR=$ROOT/build/ios/obj
 LIBOUT=$ROOT/build/ios/libq3e.a
-REF=$ROOT/build/oracle-vk/release-darwin-aarch64
+HOST_ARCH=$(uname -m)\ncase "$HOST_ARCH" in\n  arm64|aarch64) ORACLE_ARCH=aarch64 ;;\n  x86_64) ORACLE_ARCH=x86_64 ;;\n  *) echo "FATAL: unsupported macOS runner architecture: $HOST_ARCH"; exit 1 ;;\nesac\nREF=$ROOT/build/oracle-vk/release-darwin-$ORACLE_ARCH
 
 [ -d "$OVERLAY/code" ] || { echo "FATAL: overlay missing — run scripts/sync-overlay.sh"; exit 1; }
 [ -d "$REF/client" ] || { echo "FATAL: reference macOS vk build missing — run scripts/build-oracle.sh"; exit 1; }
