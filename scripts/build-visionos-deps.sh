@@ -29,6 +29,7 @@ cd "curl-$CURL_VER"
 
 SDKPATH=$(xcrun --sdk xros --show-sdk-path)
 export CC="$(xcrun --sdk xros -f clang)"
+export CPP="$CC -E"
 export CFLAGS="-isysroot $SDKPATH -target arm64-apple-xros1.0 -O2"
 export LDFLAGS="-isysroot $SDKPATH -target arm64-apple-xros1.0"
 export CPPFLAGS="-isysroot $SDKPATH -target arm64-apple-xros1.0 -DHAVE_FCNTL_O_NONBLOCK=1"

@@ -24,11 +24,20 @@ while [[ $# -gt 0 ]]; do case "$1" in
   *) echo "FATAL: unknown arg $1"; exit 1 ;;
 esac; done
 [ -n "$TAG" ] || { echo "FATAL: --tag required"; exit 1; }
-[ -n "$BIN" ] || BIN="$ROOT/build/oracle-$RENDERER/release-darwin-aarch64/quake3e.aarch64"
+if [ -z "$BIN" ]; then
+  HOST_ARCH=$(uname -m)
+  case "$HOST_ARCH" in
+    arm64|aarch64) ORACLE_ARCH=aarch64 ;;
+    x86_64) ORACLE_ARCH=x86_64 ;;
+    *) echo "FATAL: unsupported macOS runner architecture: $HOST_ARCH"; exit 1 ;;
+  esac
+  BIN="$ROOT/build/oracle-$RENDERER/release-darwin-$ORACLE_ARCH/quake3e.$ORACLE_ARCH"
+fi
 [ -x "$BIN" ] || { echo "FATAL: missing $BIN (run scripts/build-oracle.sh)"; exit 1; }
 
 if [ "$RENDERER" = vk ]; then
-  export SDL_VULKAN_LIBRARY=/opt/homebrew/lib/libMoltenVK.dylib
+  export SDL_VULKAN_LIBRARY="$(brew --prefix molten-vk)/lib/libMoltenVK.dylib"
+  [ -f "$SDL_VULKAN_LIBRARY" ] || { echo "FATAL: MoltenVK library missing at $SDL_VULKAN_LIBRARY"; exit 1; }
   [ -f "$SDL_VULKAN_LIBRARY" ] || { echo "FATAL: MoltenVK missing (brew install molten-vk)"; exit 1; }
 fi
 

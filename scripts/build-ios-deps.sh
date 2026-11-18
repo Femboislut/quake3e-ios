@@ -32,12 +32,13 @@ cd "curl-$CURL_VER"
 
 SDKPATH=$(xcrun --sdk iphoneos --show-sdk-path)
 export CC="$(xcrun --sdk iphoneos -f clang)"
+export CPP="$CC -E"
 export CFLAGS="-isysroot $SDKPATH -arch arm64 -miphoneos-version-min=16.0 -O2"
 export LDFLAGS="-isysroot $SDKPATH -arch arm64"
 # cross-compile: configure can't runtime-probe the target — answer for
 # it; and preprocessor-only checks use CPPFLAGS alone, so the sysroot
 # must live here too or every header/prototype probe fails silently.
-export CPPFLAGS="-isysroot $SDKPATH -DHAVE_FCNTL_O_NONBLOCK=1"
+export CPPFLAGS="-isysroot $SDKPATH -arch arm64 -miphoneos-version-min=16.0 -DHAVE_FCNTL_O_NONBLOCK=1"
 
 echo "== configuring curl (static, HTTP/HTTPS only, SecureTransport)"
 ./configure --host=arm-apple-darwin \

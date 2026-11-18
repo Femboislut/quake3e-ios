@@ -10,20 +10,25 @@ permissions:
 
 jobs:
   build-ios:
-    # macos-15 is also an Apple-Silicon ARM64 image, but uses the older
-    # runner image pool. This avoids the currently unstable macos-26 pool
-    # without changing the architecture required by build-oracle.sh.
-    runs-on: macos-15-intel
+    # macOS 26 Intel provides the current stable Xcode toolchain and an
+    # x86_64 oracle; iOS source extraction filters host-only assembly/VM objects.
+    runs-on: macos-26-intel
     timeout-minutes: 90
     steps:
       - name: Check out fork
         uses: actions/checkout@v4
+
+      - name: Validate build scripts
+        run: |
+          set -euo pipefail
+          bash -n scripts/*.sh
 
       - name: Verify Intel runner architecture
         run: |
           test "$(uname -m)" = "x86_64"
           sw_vers
           xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install build tools
         run: |
@@ -81,5 +86,6 @@ jobs:
             build/ios/xcodebuild.log
             build/ios-deps/curl-configure.log
             build/ios-deps/curl-make.log
+            build/ios-deps/src/curl-*/config.log
           if-no-files-found: ignore
           retention-days: 7

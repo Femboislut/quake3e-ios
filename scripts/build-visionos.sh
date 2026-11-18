@@ -16,7 +16,13 @@ OVERLAY=$ROOT/build/src-overlay
 APP=$ROOT/ios
 OBJDIR=$ROOT/build/visionos/obj
 LIBOUT=$ROOT/build/visionos/libq3e-xros.a
-REF=$ROOT/build/oracle-vk/release-darwin-aarch64
+HOST_ARCH=$(uname -m)
+case "$HOST_ARCH" in
+  arm64|aarch64) ORACLE_ARCH=aarch64 ;;
+  x86_64) ORACLE_ARCH=x86_64 ;;
+  *) echo "FATAL: unsupported macOS runner architecture: $HOST_ARCH"; exit 1 ;;
+esac
+REF=$ROOT/build/oracle-vk/release-darwin-$ORACLE_ARCH
 MVK=$ROOT/vendor/moltenvk/MoltenVK.xcframework/xros-arm64
 
 [ -d "$OVERLAY/code" ] || { echo "FATAL: overlay missing — run scripts/sync-overlay.sh"; exit 1; }
@@ -47,7 +53,7 @@ DEFS="-DNO_VM_COMPILED -DUSE_VULKAN_API -DUSE_OGG_VORBIS -DMACOS_X -DUSE_CURL -D
 INCS="-I$ROOT/build/visionos-deps/prefix/include -I$OVERLAY/code/libogg/include -I$OVERLAY/code/libvorbis/include -I$OVERLAY/code/libvorbis/lib"
 
 # desktop-only objects not compiled for the port (shell/glue replaces them)
-EXCLUDE="unix_main linux_signals sdl_glimp sdl_input sdl_snd sdl_gamma vm_aarch64"
+EXCLUDE="unix_main linux_signals sdl_glimp sdl_input sdl_snd sdl_gamma snd_mix_mmx snd_mix_sse snd_mix_x86_64 vm_x86 vm_aarch64 vm_armv7l vm_powerpc"
 
 resolve() { # $1=basename, rest=candidate dirs under code/
   local b=$1; shift
