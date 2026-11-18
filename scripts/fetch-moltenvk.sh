@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
-MVK_VER=1.4.1
+MVK_VER=1.4.2
 DEST="$ROOT/vendor/moltenvk/MoltenVK.xcframework"
 
 if [ -f "$DEST/xros-arm64/libMoltenVK.a" ]; then
