@@ -8,14 +8,22 @@ on:
 permissions:
   contents: read
 
-
 jobs:
   build-ios:
-    runs-on: macos-26
+    # macos-15 is also an Apple-Silicon ARM64 image, but uses the older
+    # runner image pool. This avoids the currently unstable macos-26 pool
+    # without changing the architecture required by build-oracle.sh.
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - name: Check out fork
         uses: actions/checkout@v4
+
+      - name: Verify runner architecture
+        run: |
+          test "$(uname -m)" = "arm64"
+          sw_vers
+          xcodebuild -version
 
       - name: Install build tools
         run: |
