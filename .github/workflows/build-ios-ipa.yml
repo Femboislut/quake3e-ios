@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     timeout-minutes: 90
     steps:
       - name: Check out fork
@@ -48,11 +48,12 @@ jobs:
           set -euo pipefail
           APP="build/ios/xcode/Release-iphoneos/Quake3e.app"
           test -d "$APP"
-          mkdir -p Payload
-          cp -R "$APP" Payload/Quake3e.app
-          /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload Quake3e-A13-diagnostics-iOS.ipa
+          mkdir -p ipa/Payload
+          /usr/bin/ditto "$APP" ipa/Payload/Quake3e.app
+          (cd ipa && /usr/bin/zip -qry ../Quake3e-A13-diagnostics-iOS.ipa Payload)
           test -s Quake3e-A13-diagnostics-iOS.ipa
-          unzip -l Quake3e-A13-diagnostics-iOS.ipa | head -35
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' ipa/Payload/Quake3e.app/Info.plist
+          unzip -t Quake3e-A13-diagnostics-iOS.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
