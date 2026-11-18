@@ -13,6 +13,16 @@ ROOT=$(pwd)
 
 ./scripts/sync-overlay.sh
 
+HOST_ARCH=$(uname -m)
+case "$HOST_ARCH" in
+  arm64|aarch64) ORACLE_ARCH=aarch64 ;;
+  *)
+    echo "FATAL: iOS oracle build requires an Apple Silicon runner (arm64); got $HOST_ARCH"
+    echo "Use runs-on: macos-26, not macos-26-intel."
+    exit 1
+    ;;
+esac
+
 JOBS=$(sysctl -n hw.ncpu)
 for R in gl vk; do
   case $R in
@@ -34,7 +44,7 @@ for R in gl vk; do
   fi
   make -C build/src-overlay release BUILD_DIR="$ROOT/build/oracle-$R" RENDERER_DEFAULT=$RD D_FILES="$DEPS" -j"$JOBS" > "$ROOT/build/oracle-$R-make.log" 2>&1 \
     || { echo "FATAL: make failed for oracle-$R — tail of log:"; tail -30 "$ROOT/build/oracle-$R-make.log"; exit 1; }
-  BIN="$ROOT/build/oracle-$R/release-darwin-aarch64/quake3e.aarch64"
+  BIN="$ROOT/build/oracle-$R/release-darwin-$ORACLE_ARCH/quake3e.$ORACLE_ARCH"
   [ -x "$BIN" ] || { echo "FATAL: $BIN not produced"; exit 1; }
   echo "   $BIN sha256=$(shasum -a 256 "$BIN" | cut -c1-12)"
 done
