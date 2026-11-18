@@ -31,17 +31,17 @@ jobs:
           test "$(git -C vendor/Quake3e rev-parse HEAD)" = "$ENGINE_COMMIT"
 
       - name: Fetch MoltenVK 1.4.2 for iOS
-        run: scripts/fetch-moltenvk-ios.sh
+        run: bash scripts/fetch-moltenvk-ios.sh
 
       - name: Build native Vulkan reference and iOS dependencies
         run: |
-          scripts/build-oracle.sh
-          scripts/build-ios-deps.sh
+          bash scripts/build-oracle.sh
+          bash scripts/build-ios-deps.sh
 
       - name: Build unsigned iOS app
         env:
           CODE_SIGNING_ALLOWED: "NO"
-        run: scripts/build-ios.sh
+        run: bash scripts/build-ios.sh
 
       - name: Package IPA
         run: |
