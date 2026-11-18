@@ -1,0 +1,17 @@
+--- a/code/renderervk/vk.c
++++ b/code/renderervk/vk.c
+@@ -6568,7 +6568,13 @@
+ 	create_info.subpass = 0;
+ 	create_info.basePipelineHandle = VK_NULL_HANDLE;
+ 	create_info.basePipelineIndex = -1;
+ 
+-	VK_CHECK( qvkCreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &create_info, NULL, &pipeline ) );
++	{
++		VkResult pipeline_result = qvkCreateGraphicsPipelines( vk.device, vk.pipelineCache, 1, &create_info, NULL, &pipeline );
++		if ( pipeline_result < 0 ) {
++			ri.Error( ERR_FATAL, "Vulkan: graphics pipeline failed (def#%u, pass#%u, shader_type=%i): %s",
++				def_index, renderPassIndex, def->shader_type, vk_result_string( pipeline_result ) );
++		}
++	}
+ 
+ 	SET_OBJECT_NAME( pipeline, va( "pipeline def#%i, pass#%i", def_index, renderPassIndex ), VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT );
