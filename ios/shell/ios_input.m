@@ -69,7 +69,7 @@ static float look_sens_x = LOOK_SENS_DEFAULT;
 static float look_sens_y = LOOK_SENS_DEFAULT;
 static float ctl_scale = 1.0f;   // control size multiplier
 static float ctl_alpha = 1.0f;   // control opacity multiplier
-static char uimap_mode = 'c';               // Q3E_UIMAP env: c|p|l
+static char uimap_mode = 'a';               // Q3E_UIMAP env: a(auto)|c|p|l
 
 // Cursor-delta multiplier (Q3E_UIDELTA env). Stock 1.32 UI: 1.0.
 // Mod UIs may scale deltas themselves — the A51 mod's UI (which once
@@ -78,9 +78,8 @@ static char uimap_mode = 'c';               // Q3E_UIMAP env: c|p|l
 // ever misbehave again; first suspect: a downloaded pk3 overriding
 // the stock ui.qvm.
 static float uidelta_mult = 1.0f;
-static float ui_touch_offset_x = 0.0f, ui_touch_offset_y = 0.0f;
-#define DEF_UI_TOUCH_X @"q3e_ui_touch_offset_x"
-#define DEF_UI_TOUCH_Y @"q3e_ui_touch_offset_y"
+int Q3E_RenderWidth(void);
+int Q3E_RenderHeight(void);
 static BOOL q3e_a51_ui_package_present(void);
 
 void Q3E_PresentSettings(UIView *fromView); // ios_settings.m
@@ -943,12 +942,6 @@ void Q3E_Input_SetControlStyle(float scale, float alpha) {
     ctl_scale = q3e_clamp_scale(scale); ctl_alpha = alpha;
     [NSNotificationCenter.defaultCenter postNotificationName:@"Q3EControlStyleChanged" object:nil];
 }
-void Q3E_Input_SetUITouchOffset(float x, float y) {
-    ui_touch_offset_x = MAX(-160.0f, MIN(160.0f, x)); ui_touch_offset_y = MAX(-160.0f, MIN(160.0f, y));
-    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
-    [d setFloat:ui_touch_offset_x forKey:DEF_UI_TOUCH_X]; [d setFloat:ui_touch_offset_y forKey:DEF_UI_TOUCH_Y];
-}
-
 void Q3E_Input_SetGyro(int enabled, float scale, int invertX, int invertY) {
     gyro_invert_x = invertX ? 1 : 0;
     gyro_invert_y = invertY ? 1 : 0;
@@ -1598,7 +1591,7 @@ static void q3e_kbd_repeat_frame(void) {
             [self applyControlStyle];
         }];
         const char *um = getenv("Q3E_UIMAP");
-        if (um && (*um == 'c' || *um == 'p' || *um == 'l')) uimap_mode = *um;
+        if (um && (*um == 'a' || *um == 'c' || *um == 'p' || *um == 'l')) uimap_mode = *um;
         const char *ud = getenv("Q3E_UIDELTA");
         if (ud && atof(ud) > 0.1) uidelta_mult = (float)atof(ud);
         const char *gyro = getenv("Q3E_GYRO");
@@ -1611,9 +1604,6 @@ static void q3e_kbd_repeat_frame(void) {
             [gyro_mgr startDeviceMotionUpdates];
             NSLog(@"Q3E gyro aim enabled, scale %.2f", gyro_scale);
         }
-        NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
-        ui_touch_offset_x = [prefs floatForKey:DEF_UI_TOUCH_X];
-        ui_touch_offset_y = [prefs floatForKey:DEF_UI_TOUCH_Y];
         _oneShotTouches = [NSMutableSet set];
         _ignoredTouches = [NSMutableSet set];
 #if !TARGET_OS_VISION
@@ -2269,19 +2259,30 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
 // the delta space the sequencer sends. Shared by tap and hover so the two agree.
 - (void)uiTargetFor:(CGPoint)p tx:(int *)otx ty:(int *)oty {
     CGSize s = self.bounds.size;
-    p.x += ui_touch_offset_x; p.y += ui_touch_offset_y;
-    CGFloat yscale = s.height / 480.0f;
-    CGFloat bias = 0.5f * (s.width - 640.0f * yscale);
-    if (bias < 0) bias = 0;
+    CGFloat renderW = MAX(1, Q3E_RenderWidth());
+    CGFloat renderH = MAX(1, Q3E_RenderHeight());
+    CGFloat px = p.x / s.width * renderW;
+    CGFloat py = p.y / s.height * renderH;
+    CGFloat xscale = renderW / 640.0f;
+    CGFloat yscale = renderH / 480.0f;
+    CGFloat bias = 0.0f;
     char mode = q3e_effective_ui_map_mode();
     float delta = q3e_effective_ui_delta_multiplier(NULL);
     int tx;
-    switch (mode) {
-        case 'p': tx = (int)(p.x / s.width * 640.0f); break;
-        case 'l': tx = (int)(p.x / yscale); break;
-        default:  tx = (int)((p.x - bias) / yscale); break;
+    if (mode == 'a') {
+        // Match UI_AdjustFrom640: preserve 4:3 content inside the render
+        // target, centring it only when the target is wider than 4:3.
+        xscale = MIN(xscale, yscale);
+        bias = 0.5f * (renderW - 640.0f * xscale);
+        tx = (int)((px - bias) / xscale);
+    } else {
+        switch (mode) {
+            case 'p': tx = (int)(px / renderW * 640.0f); break;
+            case 'l': tx = (int)(px / yscale); break;
+            default:  tx = (int)((px - 0.5f * MAX(0.0f, renderW - 640.0f * yscale)) / yscale); break;
+        }
     }
-    int ty = (int)(p.y / s.height * 480.0f);
+    int ty = (int)(py / yscale);
     if (tx < 0) tx = 0;
     if (tx > 640) tx = 640;
     if (ty < 0) ty = 0;
