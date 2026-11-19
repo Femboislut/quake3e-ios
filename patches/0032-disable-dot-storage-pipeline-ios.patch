@@ -1,6 +1,6 @@
 --- a/code/renderervk/vk.c
 +++ b/code/renderervk/vk.c
-@@ -6270,12 +6270,14 @@
+@@ -6270,15 +6270,17 @@
  		if ( device_features.wideLines ) { // needed for RB_SurfaceAxis
  			features.wideLines = VK_TRUE;
  			vk.wideLines = qtrue;
