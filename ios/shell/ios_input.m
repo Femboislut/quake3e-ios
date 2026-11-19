@@ -2249,8 +2249,17 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     if (tx > 640) tx = 640;
     if (ty < 0) ty = 0;
     if (ty > 480) ty = 480;
-    *otx = (int)(tx * delta);
-    *oty = (int)(ty * delta);
+    int outX = (int)(tx * delta);
+    int outY = (int)(ty * delta);
+    // A51's replacement ui.qvm still leaves a small residual cursor bias
+    // after the 2x delta compensation: taps land slightly left and below
+    // the finger. Correct that package-specific bias in mouse-delta space.
+    if (q3e_a51_ui_package_present()) {
+        outX += 6;
+        outY -= 6;
+    }
+    *otx = outX;
+    *oty = outY;
 }
 
 - (void)menuTapAt:(CGPoint)p {
