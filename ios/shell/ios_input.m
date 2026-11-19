@@ -127,6 +127,7 @@ static int gyro_invert_x = 0;
 static int gyro_invert_y = 1;
 // When enabled, the firing touch also drives look while it remains held.
 static int fire_drag_look = 1;
+static int multitouch_keyboard_enabled = 0; // opt-in: three-finger keyboard gesture
 static CMMotionManager *gyro_mgr;
 static float gyro_accx, gyro_accy;
 void Q3E_QueueMouse(int dx, int dy);
@@ -919,6 +920,9 @@ static UIImpactFeedbackGenerator *fire_haptic_gen = nil;   // no touch haptics o
 void Q3E_Input_SetFireDragLook(int on) {
     fire_drag_look = on ? 1 : 0;
 }
+void Q3E_Input_SetMultiTouchKeyboard(int on) {
+    multitouch_keyboard_enabled = on ? 1 : 0;
+}
 
 void Q3E_Input_SetFireHaptics(int on) {
     fire_haptics = on;
@@ -1256,11 +1260,11 @@ static void q3e_kbd_repeat_frame(void) {
 @end
 
 @implementation Q3EInputView {
-    UITouch *_moveTouch, *_lookTouch, *_fireTouch, *_jumpTouch, *_crouchTouch;
+    UITouch *_moveTouch, *_lookTouch, *_lookTouch2, *_fireTouch, *_jumpTouch, *_crouchTouch;
     UITouch *_menuBtnTouch, *_gearBtnTouch;
-    CGPoint _lookPredicted;
+    CGPoint _lookPredicted, _look2Last;
     BOOL _lookHavePrediction;
-    float _lookAccX, _lookAccY;
+    float _lookAccX, _lookAccY, _look2AccX, _look2AccY;
     NSMutableSet<UITouch *> *_oneShotTouches;
     CGPoint _moveAnchor, _lookLast;
     CGPoint _tapStart;
@@ -1944,10 +1948,14 @@ static void q3e_no_implicit_actions(CALayer *l) {
 - (void)releaseAllTouches {
     if (_moveTouch) { _moveTouch = nil; Q3E_QueueJoyAxis(0, 0); Q3E_QueueJoyAxis(1, 0); _stickBase.hidden = _stickNub.hidden = YES; }
     if (_fireTouch) { _fireTouch = nil; Q3E_QueueNamedKey("MOUSE1", 0); }
+    _lookTouch = nil; _lookTouch2 = nil;
+    _lookHavePrediction = NO;
+    _lookAccX = _lookAccY = _look2AccX = _look2AccY = 0.0f;
     if (_jumpTouch) { _jumpTouch = nil; Q3E_QueueNamedKey("SPACE", 0); }
     if (_crouchTouch) { _crouchTouch = nil; Q3E_QueueNamedKey("c", 0); }
     [_oneShotTouches removeAllObjects];
     _lookTouch = nil;
+    _lookTouch2 = nil;
 }
 
 - (BOOL)point:(CGPoint)p inCircle:(CAShapeLayer *)c radius:(CGFloat)r {
@@ -2023,20 +2031,13 @@ static void q3e_kbd_note_touch(void) {
         }
         return;
     }
-    if (event.allTouches.count >= 5) {
-        // Consume the entire five-finger gesture so its release cannot also
-        // click a menu item or leave a gameplay touch held.
+    if (multitouch_keyboard_enabled && event.allTouches.count >= 3) {
+        // Optional three-or-more-finger keyboard gesture. When disabled, all
+        // contacts remain available to the normal gameplay touch allocator.
         for (UITouch *t in event.allTouches) [_ignoredTouches addObject:t];
         [self releaseAllTouches];
-        kbd_mode = (kbd_mode == 1) ? 0 : 1;
+        kbd_mode = 1;
         [self syncKeyboard];
-        return;
-    }
-    if (event.allTouches.count >= 3) {
-        // Three- and four-finger contacts are deliberately inert now: they are
-        // neither the keyboard gesture nor three separate menu/game touches.
-        for (UITouch *t in event.allTouches) [_ignoredTouches addObject:t];
-        [self releaseAllTouches];
         return;
     }
     for (UITouch *t in touches) {
@@ -2061,10 +2062,16 @@ static void q3e_kbd_note_touch(void) {
             _fireTouch = t;
             // Optional fire-and-look: one finger holds the attack key while its
             // movement is fed through the ordinary predicted-touch look path.
-            if (fire_drag_look && !_lookTouch) {
-                _lookTouch = t;
-                _lookLast = p;
-                _lookHavePrediction = NO;
+            if (fire_drag_look) {
+                if (!_lookTouch) {
+                    _lookTouch = t;
+                    _lookLast = p;
+                    _lookHavePrediction = NO;
+                } else if (_lookTouch != t && !_lookTouch2) {
+                    _lookTouch2 = t;
+                    _look2Last = p;
+                    _look2AccX = _look2AccY = 0.0f;
+                }
             }
             Q3E_QueueNamedKey("MOUSE1", 1);
 #if !TARGET_OS_VISION
@@ -2094,6 +2101,12 @@ static void q3e_kbd_note_touch(void) {
             _lookTouch = t;
             _lookLast = p;
             _lookHavePrediction = NO; // stale prediction from a prior swipe must not seed this one
+        } else if (!_lookTouch2) {
+            // A second independent look contact lets the firing finger and the
+            // other thumb steer simultaneously without sharing delta history.
+            _lookTouch2 = t;
+            _look2Last = p;
+            _look2AccX = _look2AccY = 0.0f;
         }
     }
 }
@@ -2127,6 +2140,17 @@ static void q3e_kbd_note_touch(void) {
             Q3E_QueueJoyAxis(1, (int)lroundf(-127.0f * dy * scale));
             _stickNub.position = CGPointMake(_moveAnchor.x + dx * stickR * m,
                                              _moveAnchor.y + dy * stickR * m);
+        } else if (t == _lookTouch2) {
+            // Independent, unpredicted second look stream. Keep its origin and
+            // fractional accumulators separate from the primary finger.
+            _look2AccX += (p.x - _look2Last.x) * look_sens_x;
+            _look2AccY += (p.y - _look2Last.y) * look_sens_y;
+            _look2Last = p;
+            int mx = (int)_look2AccX, my = (int)_look2AccY;
+            if (mx || my) {
+                _look2AccX -= mx; _look2AccY -= my;
+                Q3E_QueueMouse(mx, my);
+            }
         } else if (t == _lookTouch) {
             // Predicted touches (charter: kills the trailing-finger feel).
             // Drift-free scheme: send (correction to reality) + (new
@@ -2189,6 +2213,13 @@ static void q3e_kbd_note_touch(void) {
             Q3E_QueueJoyAxis(0, 0);
             Q3E_QueueJoyAxis(1, 0);
             _stickBase.hidden = _stickNub.hidden = YES;
+        } else if (t == _lookTouch2) {
+            _lookTouch2 = nil;
+            _look2AccX = _look2AccY = 0.0f;
+            if (t == _fireTouch) {
+                _fireTouch = nil;
+                Q3E_QueueNamedKey("MOUSE1", 0);
+            }
         } else if (t == _lookTouch) {
             // settle the last prediction against reality so swipes end
             // with zero accumulated error
@@ -2203,6 +2234,16 @@ static void q3e_kbd_note_touch(void) {
                 _lookHavePrediction = NO;
             }
             _lookTouch = nil;
+            if (_lookTouch2) {
+                // Promote the remaining finger without a discontinuity.
+                _lookTouch = _lookTouch2;
+                _lookLast = _look2Last;
+                _lookHavePrediction = NO;
+                _lookTouch2 = nil;
+                _lookAccX = _look2AccX;
+                _lookAccY = _look2AccY;
+                _look2AccX = _look2AccY = 0.0f;
+            }
             if (t == _fireTouch) {
                 _fireTouch = nil;
                 Q3E_QueueNamedKey("MOUSE1", 0);
