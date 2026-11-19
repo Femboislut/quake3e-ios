@@ -1795,12 +1795,14 @@ static void q3e_no_implicit_actions(CALayer *l) {
         l.strokeColor = self->_editing ? [UIColor colorWithRed:1 green:0.85 blue:0.4 alpha:0.95].CGColor
             : [UIColor colorWithWhite:1.0 alpha:MIN(alpha + 0.15, 0.95)].CGColor;
     };
-    CGFloat stickK = k;
+    CGFloat stickK = k, stickAlpha = 1.0f;
     for (Q3EControl *c in _controls) {
-        if ([c.ident isEqualToString:@"stick"]) { stickK *= c.sizeScale; break; }
+        if ([c.ident isEqualToString:@"stick"]) { stickK *= c.sizeScale; stickAlpha = c.alphaScale; break; }
     }
-    style(_stickBase, stickK, 0.14 * ctl_alpha);
-    style(_stickNub, stickK, 0.28 * ctl_alpha);
+    style(_stickBase, stickK, 0.14 * ctl_alpha * MAX(1.0f, stickAlpha));
+    _stickBase.opacity = MIN(1.0f, stickAlpha);
+    style(_stickNub, stickK, 0.28 * ctl_alpha * MAX(1.0f, stickAlpha));
+    _stickNub.opacity = MIN(1.0f, stickAlpha);
     for (Q3EControl *c in _controls) {
         style((CAShapeLayer *)c.layer, k * c.sizeScale, c.baseAlpha * ctl_alpha);
         c.layer.opacity = c.alphaScale;
@@ -1877,7 +1879,7 @@ static void q3e_no_implicit_actions(CALayer *l) {
 }
 
 // The move zone scales with everything else: the stick's own throw radius already
-// did (STICK_RADIUS * ctl_scale in touchesMoved), so a fixed zone meant the
+// did (STICK_RADIUS * the stick's individual scale in touchesMoved), so a fixed zone meant the
 // activation area and the stick it activates disagreed at any scale but 100%.
 // The editor draws this circle at exactly this radius.
 - (BOOL)pointInMoveZone:(CGPoint)p {
@@ -2032,12 +2034,19 @@ static void q3e_kbd_note_touch(void) {
         return;
     }
     if (event.allTouches.count >= 5) {
-        // 5-finger tap: force the on-screen keyboard up (and back to following
-        // the engine on the next tap). The automatic path covers the console,
-        // chat and any focused menu field; this stays as the manual override for
-        // a mod UI whose fields the engine cannot see.
+        // Consume the entire five-finger gesture so its release cannot also
+        // click a menu item or leave a gameplay touch held.
+        for (UITouch *t in event.allTouches) [_ignoredTouches addObject:t];
+        [self releaseAllTouches];
         kbd_mode = (kbd_mode == 1) ? 0 : 1;
         [self syncKeyboard];
+        return;
+    }
+    if (event.allTouches.count >= 3) {
+        // Three- and four-finger contacts are deliberately inert now: they are
+        // neither the keyboard gesture nor three separate menu/game touches.
+        for (UITouch *t in event.allTouches) [_ignoredTouches addObject:t];
+        [self releaseAllTouches];
         return;
     }
     for (UITouch *t in touches) {
