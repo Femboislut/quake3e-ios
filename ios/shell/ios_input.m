@@ -141,7 +141,7 @@ static void gyro_poll(int menuMode, float dt) {
     // the 120 Hz reference) — otherwise 120 Hz samples twice as often as
     // 60 Hz and doubles gyro sensitivity.
     const float look_dt = dt * 120.0f;
-    const float g = gyro_scale * 8.0f * look_dt;
+    const float g = gyro_scale * 8.0f * look_dt * (gyro_invert ? -1.0f : 1.0f);
 #if TARGET_OS_VISION
     // Vision Pro headset frame: rotation about device Y ≈ head yaw (screen-
     // horizontal), about device X ≈ head pitch (screen-vertical) — the OPPOSITE
