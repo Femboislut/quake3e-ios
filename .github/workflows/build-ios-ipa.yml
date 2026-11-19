@@ -28,6 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           bash -n scripts/*.sh
+          ! grep -R 'VkRasterizationStateCreateInfo' patches/0031-a13-vulkan-pipeline-diagnostics.patch
+          grep -q 'VkPipelineRasterizationStateCreateInfo' patches/0031-a13-vulkan-pipeline-diagnostics.patch
 
       - name: Verify Intel runner architecture
         run: |
