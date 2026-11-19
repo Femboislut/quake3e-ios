@@ -1804,8 +1804,8 @@ static void q3e_no_implicit_actions(CALayer *l) {
     style(_stickNub, stickK, 0.28 * ctl_alpha * MAX(1.0f, stickAlpha));
     _stickNub.opacity = MIN(1.0f, stickAlpha);
     for (Q3EControl *c in _controls) {
-        style((CAShapeLayer *)c.layer, k * c.sizeScale, c.baseAlpha * ctl_alpha);
-        c.layer.opacity = c.alphaScale;
+        style((CAShapeLayer *)c.layer, k * c.sizeScale, c.baseAlpha * ctl_alpha * MAX(1.0f, c.alphaScale));
+        c.layer.opacity = MIN(1.0f, c.alphaScale);
     }
     [self setNeedsLayout];
 }
