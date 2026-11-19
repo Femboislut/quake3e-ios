@@ -2248,51 +2248,50 @@ static BOOL q3e_a51_ui_package_present(void) {
     return [NSFileManager.defaultManager fileExistsAtPath:path];
 }
 
-static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
-    BOOL a51 = q3e_a51_ui_package_present();
-    if (a51Present) *a51Present = a51;
-    // Q3E_UIDELTA is an explicit developer override and must not be doubled.
-    return (!getenv("Q3E_UIDELTA") && a51) ? uidelta_mult * 2.0f : uidelta_mult;
-}
-
-// The stock UI's virtual 640x480 cursor position for a point in this view, in
-// the delta space the sequencer sends. Shared by tap and hover so the two agree.
+// Convert a screen point into the relative mouse delta needed after the
+// sequencer's large negative reset. The A51 UI keeps its cursor in virtual
+// 640x480 coordinates, but scales incoming deltas by cursorScaleR =
+// max(1 / uiScale, 0.5). Its cursor bounds also extend beyond 0..640 when the
+// viewport is wider/taller than 4:3. Starting at the minimum bound means the
+// required delta is measured from the physical left/top edge, not from 0,0 in
+// virtual UI coordinates. Clamping to 0..640 here caused the cursor to vanish
+// at the left edge and made the right-hand portion of the screen unreachable.
 - (void)uiTargetFor:(CGPoint)p tx:(int *)otx ty:(int *)oty {
     CGSize s = self.bounds.size;
     CGFloat renderW = MAX(1, Q3E_RenderWidth());
     CGFloat renderH = MAX(1, Q3E_RenderHeight());
-    CGFloat px = p.x / s.width * renderW;
-    CGFloat py = p.y / s.height * renderH;
-    CGFloat xscale = renderW / 640.0f;
-    CGFloat yscale = renderH / 480.0f;
-    CGFloat bias = 0.0f;
-    char mode = q3e_effective_ui_map_mode();
-    float delta = q3e_effective_ui_delta_multiplier(NULL);
-    int tx;
-    if (mode == 'a') {
-        // Match UI_AdjustFrom640: preserve 4:3 content inside the render
-        // target, centring it only when the target is wider than 4:3.
-        xscale = MIN(xscale, yscale);
-        bias = 0.5f * (renderW - 640.0f * xscale);
-        tx = (int)((px - bias) / xscale);
-    } else {
-        switch (mode) {
-            case 'p': tx = (int)(px / renderW * 640.0f); break;
-            case 'l': tx = (int)(px / yscale); break;
-            default:  tx = (int)((px - 0.5f * MAX(0.0f, renderW - 640.0f * yscale)) / yscale); break;
-        }
+    CGFloat px = p.x / MAX(1.0, s.width) * renderW;
+    CGFloat py = p.y / MAX(1.0, s.height) * renderH;
+    BOOL a51 = q3e_a51_ui_package_present();
+    if (a51) {
+        CGFloat uiScale = MIN(renderW / 640.0f, renderH / 480.0f);
+        CGFloat cursorScaleR = MAX(1.0f / uiScale, 0.5f);
+        CGFloat deltaScale = 1.0f / (uiScale * cursorScaleR);
+        deltaScale *= uidelta_mult;
+        *otx = (int)lroundf(px * deltaScale);
+        *oty = (int)lroundf(py * deltaScale);
+        return;
     }
-    int ty = (int)(py / yscale);
-    if (tx < 0) tx = 0;
-    if (tx > 640) tx = 640;
-    if (ty < 0) ty = 0;
-    if (ty > 480) ty = 480;
-    int outX = (int)(tx * delta);
-    int outY = (int)(ty * delta);
-    *otx = outX;
-    *oty = outY;
-}
 
+    // Stock UI cursor coordinates are clamped to the 640x480 virtual canvas.
+    // Convert through the same centred 4:3 viewport transform used for drawing.
+    CGFloat uiScale = MIN(renderW / 640.0f, renderH / 480.0f);
+    CGFloat biasX = 0.5f * (renderW - 640.0f * uiScale);
+    CGFloat biasY = 0.5f * (renderH - 480.0f * uiScale);
+    char mode = q3e_effective_ui_map_mode();
+    int tx, ty;
+    if (mode == 'p') {
+        tx = (int)(px / renderW * 640.0f);
+        ty = (int)(py / renderH * 480.0f);
+    } else {
+        tx = (int)((px - biasX) / uiScale);
+        ty = (int)((py - biasY) / uiScale);
+    }
+    tx = MAX(0, MIN(640, tx));
+    ty = MAX(0, MIN(480, ty));
+    *otx = (int)lroundf(tx * uidelta_mult);
+    *oty = (int)lroundf(ty * uidelta_mult);
+}
 - (void)menuTapAt:(CGPoint)p {
     int tx, ty;
     [self uiTargetFor:p tx:&tx ty:&ty];
@@ -2303,8 +2302,10 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     hover_anchor_valid = 1;
     hover_anchor_x = tx; hover_anchor_y = ty;
     CGSize s = self.bounds.size;
-    BOOL a51 = NO;
-    float delta = q3e_effective_ui_delta_multiplier(&a51);
+    BOOL a51 = q3e_a51_ui_package_present();
+    CGFloat renderW = MAX(1, Q3E_RenderWidth()), renderH = MAX(1, Q3E_RenderHeight());
+    CGFloat uiScale = MIN(renderW / 640.0f, renderH / 480.0f);
+    float delta = a51 ? (float)(uidelta_mult / (uiScale * MAX(1.0f / uiScale, 0.5f))) : uidelta_mult;
     NSLog(@"Q3E tap[%s map=%c delta=%.1f a51=%d] (%.0f,%.0f)pt -> ui(%d,%d) view %.0fx%.0f pad=%d",
           Q3E_CurrentGame(), q3e_effective_ui_map_mode(), delta, (int)a51,
           p.x, p.y, tx, ty, s.width, s.height, (int)_padConnected);
