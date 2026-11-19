@@ -6,7 +6,7 @@
 //     response curve 0.4*m + 0.6*m^3, analog via SE_JOYSTICK_AXIS.
 //   * elsewhere: look drag — relative deltas as mouse events.
 //   * FIRE / JUMP circles bottom-right (claim their touches).
-//   * 3-finger tap: ESC (open/close menu).
+//   * 5-finger tap: keyboard override (open/close).
 //   * menu mode (UI/console catcher): taps click — each tap runs a
 //     3-tick sequence (corner-reset delta → target delta + button down →
 //     button up) because the engine coalesces consecutive same-frame
@@ -78,6 +78,10 @@ static char uimap_mode = 'c';               // Q3E_UIMAP env: c|p|l
 // ever misbehave again; first suspect: a downloaded pk3 overriding
 // the stock ui.qvm.
 static float uidelta_mult = 1.0f;
+static float ui_touch_offset_x = 0.0f, ui_touch_offset_y = 0.0f;
+#define DEF_UI_TOUCH_X @"q3e_ui_touch_offset_x"
+#define DEF_UI_TOUCH_Y @"q3e_ui_touch_offset_y"
+static BOOL q3e_a51_ui_package_present(void);
 
 void Q3E_PresentSettings(UIView *fromView); // ios_settings.m
 
@@ -933,9 +937,13 @@ static float q3e_clamp_scale(float s) {
 }
 
 void Q3E_Input_SetControlStyle(float scale, float alpha) {
-    ctl_scale = q3e_clamp_scale(scale);
-    ctl_alpha = alpha;
+    ctl_scale = q3e_clamp_scale(scale); ctl_alpha = alpha;
     [NSNotificationCenter.defaultCenter postNotificationName:@"Q3EControlStyleChanged" object:nil];
+}
+void Q3E_Input_SetUITouchOffset(float x, float y) {
+    ui_touch_offset_x = MAX(-160.0f, MIN(160.0f, x)); ui_touch_offset_y = MAX(-160.0f, MIN(160.0f, y));
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    [d setFloat:ui_touch_offset_x forKey:DEF_UI_TOUCH_X]; [d setFloat:ui_touch_offset_y forKey:DEF_UI_TOUCH_Y];
 }
 
 void Q3E_Input_SetGyro(int enabled, float scale, int invertX, int invertY) {
@@ -1596,6 +1604,13 @@ static void q3e_kbd_repeat_frame(void) {
             [gyro_mgr startDeviceMotionUpdates];
             NSLog(@"Q3E gyro aim enabled, scale %.2f", gyro_scale);
         }
+        NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
+        if (q3e_a51_ui_package_present()) {
+            if (![prefs objectForKey:DEF_UI_TOUCH_X]) [prefs setFloat:60.0f forKey:DEF_UI_TOUCH_X];
+            if (![prefs objectForKey:DEF_UI_TOUCH_Y]) [prefs setFloat:-40.0f forKey:DEF_UI_TOUCH_Y];
+        }
+        ui_touch_offset_x = [prefs floatForKey:DEF_UI_TOUCH_X];
+        ui_touch_offset_y = [prefs floatForKey:DEF_UI_TOUCH_Y];
         _oneShotTouches = [NSMutableSet set];
         _ignoredTouches = [NSMutableSet set];
 #if !TARGET_OS_VISION
@@ -2008,8 +2023,8 @@ static void q3e_kbd_note_touch(void) {
         }
         return;
     }
-    if (event.allTouches.count >= 3) {
-        // 3-finger tap: force the on-screen keyboard up (and back to following
+    if (event.allTouches.count >= 5) {
+        // 5-finger tap: force the on-screen keyboard up (and back to following
         // the engine on the next tap). The automatic path covers the console,
         // chat and any focused menu field; this stays as the manual override for
         // a mod UI whose fields the engine cannot see.
@@ -2233,6 +2248,7 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
 // the delta space the sequencer sends. Shared by tap and hover so the two agree.
 - (void)uiTargetFor:(CGPoint)p tx:(int *)otx ty:(int *)oty {
     CGSize s = self.bounds.size;
+    p.x += ui_touch_offset_x; p.y += ui_touch_offset_y;
     CGFloat yscale = s.height / 480.0f;
     CGFloat bias = 0.5f * (s.width - 640.0f * yscale);
     if (bias < 0) bias = 0;
@@ -2251,13 +2267,6 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     if (ty > 480) ty = 480;
     int outX = (int)(tx * delta);
     int outY = (int)(ty * delta);
-    // A51's replacement ui.qvm still leaves a small residual cursor bias
-    // after the 2x delta compensation: taps land slightly left and below
-    // the finger. Correct that package-specific bias in mouse-delta space.
-    if (q3e_a51_ui_package_present()) {
-        outX += 6;
-        outY -= 6;
-    }
     *otx = outX;
     *oty = outY;
 }
