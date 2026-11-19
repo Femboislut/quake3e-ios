@@ -117,6 +117,7 @@ static NSString *q3e_pos_key(NSString *ident, const char *axis) {
 // mapping/signs are a first guess — tune with hands-on feedback before
 // promoting to a default-on setting.
 static float gyro_scale = 0.0f;
+static int gyro_invert = 0;
 static CMMotionManager *gyro_mgr;
 static float gyro_accx, gyro_accy;
 void Q3E_QueueMouse(int dx, int dy);
@@ -156,6 +157,7 @@ static void gyro_poll(int menuMode, float dt) {
     gyro_accx += (float)(-m.rotationRate.x) * g;
     gyro_accy += (float)(-m.rotationRate.y) * g;
 #endif
+    if (gyro_invert) { gyro_accx = -gyro_accx; gyro_accy = -gyro_accy; }
     int dx = (int)gyro_accx, dy = (int)gyro_accy;
     if (dx || dy) {
         gyro_accx -= dx; gyro_accy -= dy;
@@ -928,7 +930,8 @@ void Q3E_Input_SetControlStyle(float scale, float alpha) {
     [NSNotificationCenter.defaultCenter postNotificationName:@"Q3EControlStyleChanged" object:nil];
 }
 
-void Q3E_Input_SetGyro(int enabled, float scale) {
+void Q3E_Input_SetGyro(int enabled, float scale, int invert) {
+    gyro_invert = invert ? 1 : 0;
     if (enabled) {
         gyro_scale = scale;
         if (!gyro_mgr) {
