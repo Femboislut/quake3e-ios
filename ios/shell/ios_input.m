@@ -1609,10 +1609,6 @@ static void q3e_kbd_repeat_frame(void) {
             NSLog(@"Q3E gyro aim enabled, scale %.2f", gyro_scale);
         }
         NSUserDefaults *prefs = NSUserDefaults.standardUserDefaults;
-        if (q3e_a51_ui_package_present()) {
-            if (![prefs objectForKey:DEF_UI_TOUCH_X]) [prefs setFloat:60.0f forKey:DEF_UI_TOUCH_X];
-            if (![prefs objectForKey:DEF_UI_TOUCH_Y]) [prefs setFloat:-40.0f forKey:DEF_UI_TOUCH_Y];
-        }
         ui_touch_offset_x = [prefs floatForKey:DEF_UI_TOUCH_X];
         ui_touch_offset_y = [prefs floatForKey:DEF_UI_TOUCH_Y];
         _oneShotTouches = [NSMutableSet set];
@@ -2178,7 +2174,11 @@ static void q3e_kbd_note_touch(void) {
             }
             CGFloat dx = p.x - _tapStart.x, dy = p.y - _tapStart.y;
             if (dx * dx + dy * dy < TAP_SLOP * TAP_SLOP) {
-                [self menuTapAt:p];
+                // UIKit's ordinary touch location is the estimated contact
+                // centre. For cursor placement (not view hit-testing), use its
+                // precise location when available to avoid finger-pad bias.
+                CGPoint precise = [t preciseLocationInView:self];
+                [self menuTapAt:precise];
             }
             continue;
         }
