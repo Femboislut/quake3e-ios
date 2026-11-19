@@ -1,0 +1,20 @@
+--- a/code/renderervk/vk.c
++++ b/code/renderervk/vk.c
+@@ -6270,12 +6270,14 @@
+ 		if ( device_features.wideLines ) { // needed for RB_SurfaceAxis
+ 			features.wideLines = VK_TRUE;
+ 			vk.wideLines = qtrue;
+ 		}
+ 
++#ifndef Q3E_MVK_BRIDGE
+ 		if ( device_features.fragmentStoresAndAtomics && device_features.vertexPipelineStoresAndAtomics ) {
+ 			features.vertexPipelineStoresAndAtomics = VK_TRUE;
+ 			features.fragmentStoresAndAtomics = VK_TRUE;
+ 			vk.fragmentStores = qtrue;
+ 		}
++#endif
+ 
+ 		if ( r_ext_texture_filter_anisotropic->integer && device_features.samplerAnisotropy ) {
+ 			features.samplerAnisotropy = VK_TRUE;
+ 			vk.samplerAnisotropy = qtrue;
+ 		}
