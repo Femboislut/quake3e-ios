@@ -11,7 +11,7 @@
 #import "ios_audio.h"
 
 // appliers (ios_input.m / AppShell.m)
-void Q3E_Input_SetGyro(int enabled, float scale);
+void Q3E_Input_SetGyro(int enabled, float scale, int invert);
 void Q3E_Input_SetTouchSens(float sx, float sy);
 void Q3E_Input_SetControlStyle(float scale, float alpha);
 void Q3E_EnableConsoleBridge(void);   // ios_glue.c — opens the port AND arms the drain
@@ -101,6 +101,7 @@ void  Q3E_VR_ReapplyRenderScale(void);
 
 #define DEF_GYRO_ON     @"q3e_gyro_on"
 #define DEF_GYRO_SCALE  @"q3e_gyro_scale"
+#define DEF_GYRO_INVERT @"q3e_gyro_invert"
 #define DEF_TOUCH_SENS  @"q3e_touch_sens" // legacy single-axis key
 #define DEF_SENS_X      @"q3e_sens_x"
 #define DEF_SENS_Y      @"q3e_sens_y"
@@ -966,7 +967,13 @@ void Q3E_Settings_ApplyAll(void) {
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     // Legacy single-axis values were stored in applied units; convert to displayed.
     float legacy = def_float(DEF_TOUCH_SENS, Q3E_SENS_DEFAULT * Q3E_SENS_APPLY) / Q3E_SENS_APPLY;
-    Q3E_Input_SetGyro([d boolForKey:DEF_GYRO_ON], def_float(DEF_GYRO_SCALE, 2.0f));
+    Q3E_Input_SetGyro([d boolForKey:DEF_GYRO_ON], def_float(DEF_GYRO_SCALE, 2.0f), [d boolForKey:DEF_GYRO_INVERT]);
+    // Populate Internet server discovery with known live master servers.
+    Q3E_QueueCommand("seta sv_master1 master.quake3arena.com");
+    Q3E_QueueCommand("seta sv_master2 master.ioquake3.org");
+    Q3E_QueueCommand("seta sv_master3 master.maverickservers.com");
+    Q3E_QueueCommand("seta sv_master4 dpmaster.deathmask.net");
+    Q3E_QueueCommand("seta sv_master5 master.huxxer.de");
     Q3E_Input_SetTouchSens(def_float(DEF_SENS_X, legacy) * Q3E_SENS_APPLY,
                            def_float(DEF_SENS_Y, legacy) * Q3E_SENS_APPLY);
     Q3E_Input_SetControlStyle(def_float(DEF_CTL_SCALE, 1.0f),
@@ -1230,7 +1237,7 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
 #endif
 
 @implementation Q3ESettingsController {
-    UISwitch *_gyroSwitch, *_fpsSwitch;
+    UISwitch *_gyroSwitch, *_gyroInvertSwitch, *_fpsSwitch;
 #ifdef Q3E_DEV_BUILD
     UISwitch *_remoteConsoleSwitch;
 #endif
@@ -1297,6 +1304,7 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
 
     float legacy = def_float(DEF_TOUCH_SENS, Q3E_SENS_DEFAULT * Q3E_SENS_APPLY) / Q3E_SENS_APPLY;
     _gyroSwitch = [self makeSwitch:[d boolForKey:DEF_GYRO_ON]];
+    _gyroInvertSwitch = [self makeSwitch:[d boolForKey:DEF_GYRO_INVERT]];
     _gyroSlider = [self makeSlider:0.5 max:6.0 value:def_float(DEF_GYRO_SCALE, 2.0f)];
     _gyroValue = [self label:@"" size:14 bold:NO];
     _sensXSlider = [self makeSlider:0.5 max:10.0 value:def_float(DEF_SENS_X, legacy)];
@@ -1600,6 +1608,7 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     [rows addArrangedSubview:[self row:@[[self label:@"Look sensitivity Y" size:16 bold:NO], _sensYSlider, _sensYValue]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Invert look" size:16 bold:NO], _invertSwitch]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Gyro aim" size:16 bold:NO], _gyroSwitch]]];
+    [rows addArrangedSubview:[self row:@[[self label:@"Invert gyro" size:16 bold:NO], _gyroInvertSwitch]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Gyro intensity" size:14 bold:NO], _gyroSlider, _gyroValue]]];
 
     [rows addArrangedSubview:[self section:@"DISPLAY"]];
@@ -1794,6 +1803,7 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
 - (void)changed {
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     [d setBool:_gyroSwitch.on forKey:DEF_GYRO_ON];
+    [d setBool:_gyroInvertSwitch.on forKey:DEF_GYRO_INVERT];
     [d setFloat:_gyroSlider.value forKey:DEF_GYRO_SCALE];
     [d setFloat:_sensXSlider.value forKey:DEF_SENS_X];
     [d setFloat:_sensYSlider.value forKey:DEF_SENS_Y];
