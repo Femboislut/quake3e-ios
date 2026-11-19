@@ -119,6 +119,8 @@ static NSString *q3e_pos_key(NSString *ident, const char *axis) {
 static float gyro_scale = 0.0f;
 static int gyro_invert_x = 0;
 static int gyro_invert_y = 1;
+// When enabled, the firing touch also drives look while it remains held.
+static int fire_drag_look = 1;
 static CMMotionManager *gyro_mgr;
 static float gyro_accx, gyro_accy;
 void Q3E_QueueMouse(int dx, int dy);
@@ -908,6 +910,10 @@ static int fire_haptics = 0;
 #if !TARGET_OS_VISION
 static UIImpactFeedbackGenerator *fire_haptic_gen = nil;   // no touch haptics on visionOS
 #endif
+void Q3E_Input_SetFireDragLook(int on) {
+    fire_drag_look = on ? 1 : 0;
+}
+
 void Q3E_Input_SetFireHaptics(int on) {
     fire_haptics = on;
 #if !TARGET_OS_VISION
@@ -1548,7 +1554,22 @@ static void q3e_kbd_repeat_frame(void) {
 #if !TARGET_OS_VISION
     [UIView animateWithDuration:0.25 animations:^{
         self.transform = CGAffineTransformIdentity;
+    } completion:^(BOOL finished) {
+        // A second keyboard transition can interrupt the animation. Never let
+        // an interrupted fit transform survive after the keyboard is gone.
+        if (finished) self.transform = CGAffineTransformIdentity;
     }];
+#endif
+}
+
+- (void)keyboardDidHide:(NSNotification *)n {
+#if !TARGET_OS_VISION
+    (void)n;
+    // UIKit's did-hide notification is the authoritative end of the transition.
+    // Restore synchronously so the next touch is never interpreted against a
+    // stale scaled/translated game view.
+    [self.layer removeAllAnimations];
+    self.transform = CGAffineTransformIdentity;
 #endif
 }
 
@@ -1566,6 +1587,8 @@ static void q3e_kbd_repeat_frame(void) {
         const char *ud = getenv("Q3E_UIDELTA");
         if (ud && atof(ud) > 0.1) uidelta_mult = (float)atof(ud);
         const char *gyro = getenv("Q3E_GYRO");
+        fire_drag_look = [NSUserDefaults.standardUserDefaults objectForKey:@"q3e_fire_drag_look"]
+            ? [NSUserDefaults.standardUserDefaults boolForKey:@"q3e_fire_drag_look"] : 1;
         if (gyro && atof(gyro) > 0.01) {
             gyro_scale = (float)atof(gyro);
             gyro_mgr = [[CMMotionManager alloc] init];
@@ -1603,6 +1626,8 @@ static void q3e_kbd_repeat_frame(void) {
             name:UIKeyboardWillShowNotification object:nil];
         [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyboardWillHide:)
             name:UIKeyboardWillHideNotification object:nil];
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyboardDidHide:)
+            name:UIKeyboardDidHideNotification object:nil];
         _stickBase.hidden = _stickNub.hidden = YES;
         // Glyphs, not words (matching vkQuake 1.0.4): a crosshair reads as fire
         // instantly, "FIRE" does not.
@@ -2012,6 +2037,13 @@ static void q3e_kbd_note_touch(void) {
         BOOL inMoveZone = [self pointInMoveZone:p];
         if (!_fireTouch && [self point:p inCircle:_fireCircle radius:FIRE_RADIUS * ctl_scale]) {
             _fireTouch = t;
+            // Optional fire-and-look: one finger holds the attack key while its
+            // movement is fed through the ordinary predicted-touch look path.
+            if (fire_drag_look && !_lookTouch) {
+                _lookTouch = t;
+                _lookLast = p;
+                _lookHavePrediction = NO;
+            }
             Q3E_QueueNamedKey("MOUSE1", 1);
 #if !TARGET_OS_VISION
             if (fire_haptics && fire_haptic_gen) { [fire_haptic_gen impactOccurred]; [fire_haptic_gen prepare]; }
@@ -2145,6 +2177,10 @@ static void q3e_kbd_note_touch(void) {
                 _lookHavePrediction = NO;
             }
             _lookTouch = nil;
+            if (t == _fireTouch) {
+                _fireTouch = nil;
+                Q3E_QueueNamedKey("MOUSE1", 0);
+            }
         } else if (t == _fireTouch) {
             _fireTouch = nil;
             Q3E_QueueNamedKey("MOUSE1", 0);
