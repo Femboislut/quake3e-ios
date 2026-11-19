@@ -2,7 +2,7 @@ name: Build Quake3e iOS IPA
 
 on:
   push:
-    branches: [fix/a13-vulkan-pipeline-crash]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
