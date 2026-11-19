@@ -1,6 +1,6 @@
 --- a/code/renderervk/vk.c
 +++ b/code/renderervk/vk.c
-@@ -6568,7 +6568,33 @@
+@@ -6567,7 +6567,58 @@
  	create_info.subpass = 0;
  	create_info.basePipelineHandle = VK_NULL_HANDLE;
  	create_info.basePipelineIndex = -1;
