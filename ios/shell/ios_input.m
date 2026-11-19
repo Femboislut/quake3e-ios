@@ -105,6 +105,9 @@ void Q3E_PresentSettings(UIView *fromView); // ios_settings.m
 @property (nonatomic, copy) NSString *ident;   // save key — renaming resets that
                                                // control for everyone
 @property (nonatomic) CGFloat baseRadius;
+@property (nonatomic) CGFloat baseAlpha;
+@property (nonatomic) CGFloat sizeScale;
+@property (nonatomic) CGFloat alphaScale;
 @property (nonatomic) CGPoint unit;
 @property (nonatomic) BOOL hasSaved;
 @property (nonatomic) BOOL zoneOnly;           // move zone: never pressable
@@ -112,9 +115,9 @@ void Q3E_PresentSettings(UIView *fromView); // ios_settings.m
 @end
 @implementation Q3EControl @end
 
-static NSString *q3e_pos_key(NSString *ident, const char *axis) {
-    return [NSString stringWithFormat:@"q3e_btn_%@_%s", ident, axis];
-}
+static NSString *q3e_pos_key(NSString *ident, const char *axis) { return [NSString stringWithFormat:@"q3e_btn_%@_%s", ident, axis]; }
+static NSString *q3e_scale_key(NSString *ident) { return [NSString stringWithFormat:@"q3e_btn_%@_scale", ident]; }
+static NSString *q3e_alpha_key(NSString *ident) { return [NSString stringWithFormat:@"q3e_btn_%@_alpha", ident]; }
 #define DEF_LAYOUT_SET @"q3e_layoutSet"
 
 // Gyro aim: enabled by Q3E_GYRO=<scale> (e.g. 2.0). Landscape-right axis
@@ -1269,12 +1272,13 @@ static void q3e_kbd_repeat_frame(void) {
     CAShapeLayer *_wnextCircle, *_wprevCircle, *_crouchCircle, *_menuButton, *_gearButton;
     CAShapeLayer *_stickZone;                   // drawn only while editing
     NSMutableArray<Q3EControl *> *_controls;
+    Q3EControl *_selectedCtl;
     BOOL _editing;
     Q3EControl *_dragCtl;
     CGSize _dragOffset;
     UIView *_editBar;
-    UISlider *_editSlider;
-    UILabel *_editPct;
+    UISlider *_editSizeSlider, *_editAlphaSlider;
+    UILabel *_editSelectedLabel, *_editSizePct, *_editAlphaPct;
     NSTimer *_modeTimer;
     BOOL _menuMode;
     BOOL _padConnected;
@@ -1785,26 +1789,16 @@ static void q3e_no_implicit_actions(CALayer *l) {
 // at all and never scaled by any amount.
 - (void)applyControlStyle {
     const CGFloat k = ctl_scale;
-    void (^style)(CAShapeLayer *, CGFloat) = ^(CAShapeLayer *l, CGFloat baseA) {
-        l.transform = CATransform3DMakeScale(k, k, 1.0);
-        l.lineWidth = 2.0 / k;   // the transform scales the stroke too — keep ring weight constant
-        l.fillColor = [UIColor colorWithWhite:1.0 alpha:MIN(baseA * ctl_alpha, 0.9)].CGColor;
-        // Don't stomp the editor's highlight: the scale slider lives IN the editor,
-        // so this runs on every drag of it while the outlines are meant to be yellow.
-        l.strokeColor = self->_editing
-            ? [UIColor colorWithRed:1 green:0.85 blue:0.4 alpha:0.95].CGColor
-            : [UIColor colorWithWhite:1.0 alpha:MIN((baseA + 0.15) * ctl_alpha, 0.95)].CGColor;
+    void (^style)(CAShapeLayer *, CGFloat, CGFloat) = ^(CAShapeLayer *l, CGFloat scale, CGFloat alpha) {
+        l.transform = CATransform3DMakeScale(scale, scale, 1.0);
+        l.lineWidth = 2.0 / scale;
+        l.fillColor = [UIColor colorWithWhite:1.0 alpha:MIN(alpha, 0.9)].CGColor;
+        l.strokeColor = self->_editing ? [UIColor colorWithRed:1 green:0.85 blue:0.4 alpha:0.95].CGColor
+            : [UIColor colorWithWhite:1.0 alpha:MIN(alpha + 0.15, 0.95)].CGColor;
     };
-    style(_fireCircle, 0.20);
-    style(_jumpCircle, 0.20);
-    style(_wnextCircle, 0.16);
-    style(_wprevCircle, 0.16);
-    style(_crouchCircle, 0.18);
-    style(_stickBase, 0.14);
-    style(_stickNub, 0.28);
-    style(_stickZone, 0.05);
-    style(_menuButton, 0.16);
-    style(_gearButton, 0.16);
+    style(_stickBase, k, 0.14 * ctl_alpha);
+    style(_stickNub, k, 0.28 * ctl_alpha);
+    for (Q3EControl *c in _controls) style((CAShapeLayer *)c.layer, k * c.sizeScale, c.baseAlpha * ctl_alpha * c.alphaScale);
     [self setNeedsLayout];
 }
 
@@ -1814,23 +1808,23 @@ static void q3e_no_implicit_actions(CALayer *l) {
 // only a customised control switches to unit coordinates.
 - (void)buildControlRegistry {
     _controls = [NSMutableArray array];
-    void (^reg)(CAShapeLayer *, NSString *, CGFloat, BOOL, CGPoint (^)(CGSize, CGFloat)) =
-        ^(CAShapeLayer *layer, NSString *ident, CGFloat r, BOOL zoneOnly, CGPoint (^def)(CGSize, CGFloat)) {
-        Q3EControl *c = [Q3EControl new];
-        c.layer = layer; c.ident = ident; c.baseRadius = r; c.zoneOnly = zoneOnly; c.defaultPos = def;
-        [self->_controls addObject:c];
+    void (^reg)(CAShapeLayer *, NSString *, CGFloat, BOOL, CGFloat, CGPoint (^)(CGSize, CGFloat)) =
+        ^(CAShapeLayer *layer, NSString *ident, CGFloat r, BOOL zoneOnly, CGFloat baseAlpha, CGPoint (^def)(CGSize, CGFloat)) {
+        Q3EControl *c = [Q3EControl new]; c.layer = layer; c.ident = ident; c.baseRadius = r;
+        c.baseAlpha = baseAlpha; c.sizeScale = 1.0f; c.alphaScale = 1.0f;
+        c.zoneOnly = zoneOnly; c.defaultPos = def; [self->_controls addObject:c];
     };
     // Positions below marked "arranged on device" were dragged into place on a
     // phone and read back with `touchedit print`, then promoted to defaults.
-    reg(_stickZone, @"stick", STICK_ZONE_R, YES,
+    reg(_stickZone, @"stick", STICK_ZONE_R, YES, 0.05,
         ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width * 0.220f, sz.height * 0.641f); }); // arranged on device
-    reg(_fireCircle,   @"fire",   FIRE_RADIUS,   NO, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width * 0.822f, sz.height * 0.714f); }); // arranged on device
-    reg(_jumpCircle,   @"jump",   JUMP_RADIUS,   NO, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width * 0.913f, sz.height * 0.530f); }); // arranged on device
-    reg(_wnextCircle,  @"wnext",  WPN_RADIUS,    NO, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width - 58 * k,  sz.height - 300 * k); });
-    reg(_wprevCircle,  @"wprev",  WPN_RADIUS,    NO, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width - 132 * k, sz.height - 300 * k); });
-    reg(_crouchCircle, @"crouch", CROUCH_RADIUS, NO, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width * 0.923f, sz.height * 0.859f); }); // arranged on device
-    reg(_menuButton,   @"menu",   MENU_BTN_RADIUS, NO, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width - 48, 42); });
-    reg(_gearButton,   @"gear",   MENU_BTN_RADIUS, NO, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(48, 42); });
+    reg(_fireCircle,   @"fire",   FIRE_RADIUS,   NO, 0.20, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width * 0.822f, sz.height * 0.714f); }); // arranged on device
+    reg(_jumpCircle,   @"jump",   JUMP_RADIUS,   NO, 0.20, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width * 0.913f, sz.height * 0.530f); }); // arranged on device
+    reg(_wnextCircle,  @"wnext",  WPN_RADIUS,    NO, 0.16, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width - 58 * k,  sz.height - 300 * k); });
+    reg(_wprevCircle,  @"wprev",  WPN_RADIUS,    NO, 0.16, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width - 132 * k, sz.height - 300 * k); });
+    reg(_crouchCircle, @"crouch", CROUCH_RADIUS, NO, 0.18, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width * 0.923f, sz.height * 0.859f); }); // arranged on device
+    reg(_menuButton,   @"menu",   MENU_BTN_RADIUS, NO, 0.16, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(sz.width - 48, 42); });
+    reg(_gearButton,   @"gear",   MENU_BTN_RADIUS, NO, 0.16, ^CGPoint(CGSize sz, CGFloat k) { return CGPointMake(48, 42); });
     [self loadControlPositions];
 }
 
@@ -1839,6 +1833,8 @@ static void q3e_no_implicit_actions(CALayer *l) {
     BOOL custom = [d boolForKey:DEF_LAYOUT_SET];
     for (Q3EControl *c in _controls) {
         c.hasSaved = custom && [d objectForKey:q3e_pos_key(c.ident, "x")] != nil;
+        c.sizeScale = [d objectForKey:q3e_scale_key(c.ident)] ? MAX(0.5f, MIN(2.0f, [d floatForKey:q3e_scale_key(c.ident)])) : 1.0f;
+        c.alphaScale = [d objectForKey:q3e_alpha_key(c.ident)] ? MAX(0.1f, MIN(2.0f, [d floatForKey:q3e_alpha_key(c.ident)])) : 1.0f;
         if (c.hasSaved)
             c.unit = CGPointMake([d floatForKey:q3e_pos_key(c.ident, "x")],
                                  [d floatForKey:q3e_pos_key(c.ident, "y")]);
@@ -1851,21 +1847,21 @@ static void q3e_no_implicit_actions(CALayer *l) {
     for (Q3EControl *c in _controls) {
         [d removeObjectForKey:q3e_pos_key(c.ident, "x")];
         [d removeObjectForKey:q3e_pos_key(c.ident, "y")];
+        [d removeObjectForKey:q3e_scale_key(c.ident)];
+        [d removeObjectForKey:q3e_alpha_key(c.ident)];
     }
     [d setBool:NO forKey:DEF_LAYOUT_SET];
     [d setFloat:1.0f forKey:@"q3e_ctl_scale"];
     ctl_scale = 1.0f;
     [self applyControlStyle];
-    [self loadControlPositions];
-    _editSlider.value = 1.0f;
-    [self updateScaleLabel];
+    [self loadControlPositions]; _selectedCtl = nil; [self syncEditorSelection];
     NSLog(@"Q3E touch layout reset to defaults");
 }
 
 - (Q3EControl *)placeableAt:(CGPoint)p {
     Q3EControl *best = nil;   // smallest wins, so a button inside the stick circle stays grabbable
     for (Q3EControl *c in _controls) {
-        CGFloat r = c.baseRadius * ctl_scale;   // == what the editor draws
+        CGFloat r = c.baseRadius * ctl_scale * c.sizeScale;
         CGFloat dx = p.x - c.layer.position.x, dy = p.y - c.layer.position.y;
         if (dx * dx + dy * dy <= r * r && (!best || c.baseRadius < best.baseRadius))
             best = c;
@@ -1878,16 +1874,20 @@ static void q3e_no_implicit_actions(CALayer *l) {
 // activation area and the stick it activates disagreed at any scale but 100%.
 // The editor draws this circle at exactly this radius.
 - (BOOL)pointInMoveZone:(CGPoint)p {
-    const CGFloat r = STICK_ZONE_R * ctl_scale;
+    CGFloat stickScale = [self controlScaleForIdent:@"stick"];
+    const CGFloat r = STICK_ZONE_R * stickScale;
     CGFloat dx = p.x - _stickZone.position.x, dy = p.y - _stickZone.position.y;
     return dx * dx + dy * dy <= r * r;
 }
 
 // ≡ / ⚙ touch target. Scales like everything else, but never below the ~44 pt
 // diameter a fingertip needs — shrinking the controls must not make Esc unhittable.
-static CGFloat q3e_menu_hit_radius(void) {
-    CGFloat r = MENU_BTN_HIT * ctl_scale;
-    return r < 26.0f ? 26.0f : r;
+- (CGFloat)controlScaleForIdent:(NSString *)ident {
+    for (Q3EControl *c in _controls) if ([c.ident isEqualToString:ident]) return ctl_scale * c.sizeScale;
+    return ctl_scale;
+}
+- (CGFloat)menuHitRadiusForIdent:(NSString *)ident {
+    CGFloat r = MENU_BTN_HIT * [self controlScaleForIdent:ident]; return r < 26.0f ? 26.0f : r;
 }
 
 - (void)layoutSubviews {
@@ -2017,6 +2017,7 @@ static void q3e_kbd_note_touch(void) {
     if (_editing) {
         CGPoint p = [touches.anyObject locationInView:self];
         _dragCtl = [self placeableAt:p];
+        _selectedCtl = _dragCtl; [self syncEditorSelection];
         if (_dragCtl) {
             _dragOffset = CGSizeMake(_dragCtl.layer.position.x - p.x, _dragCtl.layer.position.y - p.y);
             NSLog(@"Q3E edit: grabbed %@", _dragCtl.ident);
@@ -2034,11 +2035,11 @@ static void q3e_kbd_note_touch(void) {
     }
     for (UITouch *t in touches) {
         CGPoint p = [t locationInView:self];
-        if (!_gearButton.hidden && [self point:p inCircle:_gearButton radius:q3e_menu_hit_radius()]) {
+        if (!_gearButton.hidden && [self point:p inCircle:_gearButton radius:[self menuHitRadiusForIdent:@"gear"]]) {
             _gearBtnTouch = t;              // ⚙ tap = open settings on release
             continue;
         }
-        if (!_menuButton.hidden && [self point:p inCircle:_menuButton radius:q3e_menu_hit_radius()]) {
+        if (!_menuButton.hidden && [self point:p inCircle:_menuButton radius:[self menuHitRadiusForIdent:@"menu"]]) {
             _menuBtnTouch = t;              // ≡ tap = ESC on release
             continue;
         }
@@ -2050,7 +2051,7 @@ static void q3e_kbd_note_touch(void) {
             continue; // controller / mouse+keyboard own gameplay input; touch stays menu-only
         }
         BOOL inMoveZone = [self pointInMoveZone:p];
-        if (!_fireTouch && [self point:p inCircle:_fireCircle radius:FIRE_RADIUS * ctl_scale]) {
+        if (!_fireTouch && [self point:p inCircle:_fireCircle radius:FIRE_RADIUS * [self controlScaleForIdent:@"fire"]]) {
             _fireTouch = t;
             // Optional fire-and-look: one finger holds the attack key while its
             // movement is fed through the ordinary predicted-touch look path.
@@ -2063,17 +2064,17 @@ static void q3e_kbd_note_touch(void) {
 #if !TARGET_OS_VISION
             if (fire_haptics && fire_haptic_gen) { [fire_haptic_gen impactOccurred]; [fire_haptic_gen prepare]; }
 #endif
-        } else if (!_jumpTouch && [self point:p inCircle:_jumpCircle radius:JUMP_RADIUS * ctl_scale]) {
+        } else if (!_jumpTouch && [self point:p inCircle:_jumpCircle radius:JUMP_RADIUS * [self controlScaleForIdent:@"jump"]]) {
             _jumpTouch = t;
             Q3E_QueueNamedKey("SPACE", 1);
-        } else if (!_crouchTouch && [self point:p inCircle:_crouchCircle radius:CROUCH_RADIUS * ctl_scale]) {
+        } else if (!_crouchTouch && [self point:p inCircle:_crouchCircle radius:CROUCH_RADIUS * [self controlScaleForIdent:@"crouch"]]) {
             _crouchTouch = t;
             Q3E_QueueNamedKey("c", 1); // default bind: +movedown (hold to crouch)
-        } else if ([self point:p inCircle:_wnextCircle radius:WPN_RADIUS * ctl_scale]) {
+        } else if ([self point:p inCircle:_wnextCircle radius:WPN_RADIUS * [self controlScaleForIdent:@"wnext"]]) {
             [_oneShotTouches addObject:t]; // impulse: wheel keys are momentary
             Q3E_QueueNamedKey("MWHEELDOWN", 1);
             Q3E_QueueNamedKey("MWHEELDOWN", 0);
-        } else if ([self point:p inCircle:_wprevCircle radius:WPN_RADIUS * ctl_scale]) {
+        } else if ([self point:p inCircle:_wprevCircle radius:WPN_RADIUS * [self controlScaleForIdent:@"wprev"]]) {
             [_oneShotTouches addObject:t];
             Q3E_QueueNamedKey("MWHEELUP", 1);
             Q3E_QueueNamedKey("MWHEELUP", 0);
@@ -2110,7 +2111,7 @@ static void q3e_kbd_note_touch(void) {
     for (UITouch *t in touches) {
         CGPoint p = [t locationInView:self];
         if (t == _moveTouch) {
-            const float stickR = STICK_RADIUS * ctl_scale;
+            const float stickR = STICK_RADIUS * [self controlScaleForIdent:@"stick"];
             float dx = (p.x - _moveAnchor.x) / stickR;
             float dy = (p.y - _moveAnchor.y) / stickR;
             float m = sqrtf(dx * dx + dy * dy);
@@ -2369,6 +2370,7 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
         NSLog(@"Q3E layout: %@ -> (%.3f, %.3f)", _dragCtl.ident, u.x, u.y);
     }
     _dragCtl = nil;
+    [self applyControlStyle];
 }
 
 // ---- layout editor --------------------------------------------------------
@@ -2385,6 +2387,7 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
         // where nothing can put a finger on the glass.
         q3e_kbd_note_touch();
         _dragCtl = [self placeableAt:p];
+        _selectedCtl = _dragCtl; [self syncEditorSelection];
         if (_dragCtl)
             _dragOffset = CGSizeMake(_dragCtl.layer.position.x - p.x, _dragCtl.layer.position.y - p.y);
         NSLog(@"Q3E faketouch down (%.0f,%.0f) grabbed=%@", p.x, p.y, _dragCtl.ident ?: @"none");
@@ -2419,7 +2422,7 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     }
 }
 
-- (void)updateScaleLabel { _editPct.text = [NSString stringWithFormat:@"%.0f%%", ctl_scale * 100.0f]; }
+- (void)updateScaleLabel { [self syncEditorSelection]; }
 
 - (BOOL)isEditingLayout { return _editing; }
 
@@ -2462,32 +2465,42 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     sl.translatesAutoresizingMaskIntoConstraints = NO;
     [sl addTarget:self action:@selector(editScaleChanged:) forControlEvents:UIControlEventValueChanged];
     [bar addSubview:sl];
-    _editSlider = sl;
+    [sl addTarget:self action:@selector(editScaleChanged:) forControlEvents:UIControlEventValueChanged];
+    _editSizeSlider = sl;
 
     UILabel *pct = [UILabel new];
     pct.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
     pct.textColor = [UIColor colorWithWhite:1 alpha:0.9];
     pct.translatesAutoresizingMaskIntoConstraints = NO;
     [bar addSubview:pct];
-    _editPct = pct;
-    [self updateScaleLabel];
+    _editSizePct = pct;
+    UILabel *alphaPct = [UILabel new]; alphaPct.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
+    alphaPct.textColor = [UIColor colorWithWhite:1 alpha:0.9]; alphaPct.translatesAutoresizingMaskIntoConstraints = NO;
+    [bar addSubview:alphaPct]; _editAlphaPct = alphaPct;
+    UILabel *selected = [UILabel new]; selected.font = [UIFont boldSystemFontOfSize:12]; selected.textColor = UIColor.whiteColor;
+    selected.textAlignment = NSTextAlignmentCenter; selected.translatesAutoresizingMaskIntoConstraints = NO;
+    [bar addSubview:selected]; _editSelectedLabel = selected;
+    UISlider *alpha = [UISlider new]; alpha.minimumValue = 0.1f; alpha.maximumValue = 2.0f; alpha.value = 1.0f;
+    alpha.minimumTrackTintColor = [UIColor colorWithWhite:1 alpha:0.9]; alpha.translatesAutoresizingMaskIntoConstraints = NO;
+    [alpha addTarget:self action:@selector(editAlphaChanged:) forControlEvents:UIControlEventValueChanged];
+    [bar addSubview:alpha]; _editAlphaSlider = alpha; [self syncEditorSelection];
 
     UILayoutGuide *safe = self.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
         [bar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:14],
         [bar.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-14],
-        [bar.heightAnchor constraintEqualToConstant:42],
+        [bar.heightAnchor constraintEqualToConstant:58],
         [bar.trailingAnchor constraintEqualToAnchor:done.trailingAnchor],
         [reset.leadingAnchor constraintEqualToAnchor:bar.leadingAnchor],
         [reset.centerYAnchor constraintEqualToAnchor:bar.centerYAnchor],
         [reset.widthAnchor constraintEqualToConstant:42],
         [reset.heightAnchor constraintEqualToConstant:42],
-        [sl.leadingAnchor constraintEqualToAnchor:reset.trailingAnchor constant:16],
-        [sl.centerYAnchor constraintEqualToAnchor:bar.centerYAnchor],
-        [sl.widthAnchor constraintEqualToConstant:220],
-        [pct.centerXAnchor constraintEqualToAnchor:sl.centerXAnchor],
-        [pct.bottomAnchor constraintEqualToAnchor:sl.topAnchor constant:-2],
-        [done.leadingAnchor constraintEqualToAnchor:sl.trailingAnchor constant:16],
+        [selected.leadingAnchor constraintEqualToAnchor:reset.trailingAnchor constant:10], [selected.centerYAnchor constraintEqualToAnchor:bar.centerYAnchor], [selected.widthAnchor constraintEqualToConstant:58],
+        [sl.leadingAnchor constraintEqualToAnchor:selected.trailingAnchor constant:10], [sl.centerYAnchor constraintEqualToAnchor:bar.centerYAnchor constant:8], [sl.widthAnchor constraintEqualToConstant:145],
+        [pct.centerXAnchor constraintEqualToAnchor:sl.centerXAnchor], [pct.bottomAnchor constraintEqualToAnchor:sl.topAnchor constant:-2],
+        [alpha.leadingAnchor constraintEqualToAnchor:sl.trailingAnchor constant:12], [alpha.centerYAnchor constraintEqualToAnchor:bar.centerYAnchor constant:8], [alpha.widthAnchor constraintEqualToConstant:145],
+        [alphaPct.centerXAnchor constraintEqualToAnchor:alpha.centerXAnchor], [alphaPct.bottomAnchor constraintEqualToAnchor:alpha.topAnchor constant:-2],
+        [done.leadingAnchor constraintEqualToAnchor:alpha.trailingAnchor constant:12],
         [done.centerYAnchor constraintEqualToAnchor:bar.centerYAnchor],
         [done.widthAnchor constraintEqualToConstant:42],
         [done.heightAnchor constraintEqualToConstant:42],
@@ -2495,11 +2508,26 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     NSLog(@"Q3E touch layout editor entered");
 }
 
+- (void)syncEditorSelection {
+    if (!_editing || !_editSelectedLabel) return;
+    _editSelectedLabel.text = _selectedCtl ? _selectedCtl.ident.uppercaseString : @"—";
+    _editSizeSlider.enabled = _selectedCtl != nil; _editAlphaSlider.enabled = _selectedCtl != nil;
+    _editSizeSlider.value = _selectedCtl ? _selectedCtl.sizeScale : 1.0f;
+    _editAlphaSlider.value = _selectedCtl ? _selectedCtl.alphaScale : 1.0f;
+    _editSizePct.text = [NSString stringWithFormat:@"%.0f%%", _editSizeSlider.value * 100.0f];
+    _editAlphaPct.text = [NSString stringWithFormat:@"%.0f%%", _editAlphaSlider.value * 100.0f];
+}
 - (void)editScaleChanged:(UISlider *)sl {
-    ctl_scale = q3e_clamp_scale(sl.value);
-    [NSUserDefaults.standardUserDefaults setFloat:ctl_scale forKey:@"q3e_ctl_scale"];
-    [self applyControlStyle];
-    [self updateScaleLabel];
+    if (!_selectedCtl) return;
+    _selectedCtl.sizeScale = MAX(0.5f, MIN(2.0f, sl.value));
+    [NSUserDefaults.standardUserDefaults setFloat:_selectedCtl.sizeScale forKey:q3e_scale_key(_selectedCtl.ident)];
+    [self applyControlStyle]; [self syncEditorSelection];
+}
+- (void)editAlphaChanged:(UISlider *)sl {
+    if (!_selectedCtl) return;
+    _selectedCtl.alphaScale = MAX(0.1f, MIN(2.0f, sl.value));
+    [NSUserDefaults.standardUserDefaults setFloat:_selectedCtl.alphaScale forKey:q3e_alpha_key(_selectedCtl.ident)];
+    [self applyControlStyle]; [self syncEditorSelection];
 }
 
 - (void)endEditingLayout {
@@ -2510,7 +2538,8 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     _stickZone.hidden = YES;
     _stickBase.hidden = _stickNub.hidden = YES;
     [_editBar removeFromSuperview];
-    _editBar = nil; _editSlider = nil; _editPct = nil;
+    _editBar = nil; _editSizeSlider = nil; _editAlphaSlider = nil;
+    _editSelectedLabel = nil; _editSizePct = nil; _editAlphaPct = nil; _selectedCtl = nil;
     _menuMode = !_menuMode; [self syncMode];   // force a re-sync of control visibility
     NSLog(@"Q3E touch layout editor exited");
 }
