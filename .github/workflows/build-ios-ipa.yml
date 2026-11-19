@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: quake3e-ios-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-ios:
     runs-on: macos-26-intel
@@ -58,12 +62,6 @@ jobs:
           restore-keys: |
             ccache-ios-engine-
 
-      - name: Install build tools (no Homebrew update)
-        run: |
-          brew install xcodegen molten-vk vulkan-loader ccache
-          ccache -M 1G
-          ccache -s
-
       - name: Fetch pinned Quake3e engine
         run: |
           set -euo pipefail
@@ -76,6 +74,15 @@ jobs:
             git -C vendor/Quake3e checkout "$ENGINE_COMMIT"
           fi
           test "$(git -C vendor/Quake3e rev-parse HEAD)" = "$ENGINE_COMMIT"
+
+      - name: Validate engine patch series before installing/building
+        run: bash scripts/sync-overlay.sh
+
+      - name: Install build tools (no Homebrew update)
+        run: |
+          brew install xcodegen molten-vk vulkan-loader ccache
+          ccache -M 1G
+          ccache -s
 
       - name: Fetch MoltenVK 1.4.2 for iOS
         run: bash scripts/fetch-moltenvk-ios.sh
