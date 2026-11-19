@@ -66,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p vendor
-          ENGINE_COMMIT="$(awk '$1 == "commit" {print $3}' upstream.pin)
+                    ENGINE_COMMIT="$(awk '$1 == "commit" {print $3}' upstream.pin)"
           if [ -d vendor/Quake3e/.git ]; then
             git -C vendor/Quake3e checkout "$ENGINE_COMMIT"
           else
