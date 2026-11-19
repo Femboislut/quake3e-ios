@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: quake3e-ios-${{ github.ref }}
@@ -106,18 +106,27 @@ jobs:
           test -d "$APP"
           mkdir -p ipa/Payload
           /usr/bin/ditto "$APP" ipa/Payload/Quake3e.app
-          (cd ipa && /usr/bin/zip -qry ../Quake3e-A13-diagnostics-iOS.ipa Payload)
-          test -s Quake3e-A13-diagnostics-iOS.ipa
+          (cd ipa && /usr/bin/zip -qry ../Quake3e.ipa Payload)
+          test -s Quake3e.ipa
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' ipa/Payload/Quake3e.app/Info.plist
-          unzip -t Quake3e-A13-diagnostics-iOS.ipa
+          unzip -t Quake3e.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Quake3e-A13-diagnostics-iOS
-          path: Quake3e-A13-diagnostics-iOS.ipa
+          name: Quake3e-build
+          path: Quake3e.ipa
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish direct IPA release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-build-${{ github.run_number }}
+          name: Quake3e iOS build #${{ github.run_number }}
+          prerelease: true
+          files: Quake3e.ipa
+          fail_on_unmatched_files: true
 
       - name: Upload build logs
         if: always()
