@@ -9,7 +9,7 @@
 +	{
 +		VkResult pipeline_result;
 +		VkResult original_result;
-+		VkRasterizationStateCreateInfo fallback_rasterization_state;
++		VkPipelineRasterizationStateCreateInfo fallback_rasterization_state;
 +		VkPipelineMultisampleStateCreateInfo fallback_multisample_state;
 +		qboolean fallback_attempted = qfalse;
 +
