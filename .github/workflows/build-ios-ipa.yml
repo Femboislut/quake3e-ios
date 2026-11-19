@@ -10,10 +10,12 @@ permissions:
 
 jobs:
   build-ios:
-    # macOS 26 Intel provides the current stable Xcode toolchain and an
-    # x86_64 oracle; iOS source extraction filters host-only assembly/VM objects.
     runs-on: macos-26-intel
     timeout-minutes: 90
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 1G
     steps:
       - name: Check out fork
         uses: actions/checkout@v4
@@ -30,17 +32,49 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Install build tools
+      - name: Cache pinned engine checkout
+        uses: actions/cache@v4
+        with:
+          path: vendor/Quake3e
+          key: quake3e-${{ hashFiles('upstream.pin') }}
+
+      - name: Cache MoltenVK iOS framework
+        uses: actions/cache@v4
+        with:
+          path: vendor/moltenvk-ios
+          key: moltenvk-ios-1.4.2
+
+      - name: Cache iOS dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/ios-deps
+          key: ios-deps-curl-8.11.1-xcode26-iphoneos16
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-ios-engine-${{ hashFiles('upstream.pin', 'patches/*.patch', 'scripts/build-ios.sh') }}
+          restore-keys: |
+            ccache-ios-engine-
+
+      - name: Install build tools (no Homebrew update)
         run: |
-          brew update
-          brew install xcodegen molten-vk vulkan-loader
+          brew install xcodegen molten-vk vulkan-loader ccache
+          ccache -M 1G
+          ccache -s
 
       - name: Fetch pinned Quake3e engine
         run: |
+          set -euo pipefail
           mkdir -p vendor
-          git clone https://github.com/ec-/Quake3e vendor/Quake3e
-          ENGINE_COMMIT="$(awk '$1 == "commit" {print $3}' upstream.pin)"
-          git -C vendor/Quake3e checkout "$ENGINE_COMMIT"
+          ENGINE_COMMIT="$(awk '$1 == "commit" {print $3}' upstream.pin)
+          if [ -d vendor/Quake3e/.git ]; then
+            git -C vendor/Quake3e checkout "$ENGINE_COMMIT"
+          else
+            git clone --filter=blob:none https://github.com/ec-/Quake3e vendor/Quake3e
+            git -C vendor/Quake3e checkout "$ENGINE_COMMIT"
+          fi
           test "$(git -C vendor/Quake3e rev-parse HEAD)" = "$ENGINE_COMMIT"
 
       - name: Fetch MoltenVK 1.4.2 for iOS

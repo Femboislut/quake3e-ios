@@ -6,6 +6,11 @@ ROOT=$(pwd)
 VER=1.4.2
 TMP="$ROOT/build/moltenvk-ios-dl"
 DEST="$ROOT/vendor/moltenvk-ios/MoltenVK/MoltenVK"
+XC="$DEST/static/MoltenVK.xcframework"
+if [ -f "$XC/ios-arm64/libMoltenVK.a" ] && [ -d "$DEST/include" ]; then
+  echo "MoltenVK iOS $VER cache hit — reusing $DEST"
+  exit 0
+fi
 mkdir -p "$TMP" "$ROOT/vendor/moltenvk-ios"
 rm -rf "$TMP"/*
 echo "== downloading MoltenVK iOS $VER"
