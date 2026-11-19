@@ -2196,37 +2196,48 @@ static void q3e_kbd_note_touch(void) {
     }
 }
 
-// The stock UI's virtual 640x480 cursor position for a point in this view, in
-// the delta space the sequencer sends (uidelta_mult applied). Shared by the
-// tap click and the hover follow, so the two can never disagree.
-- (void)uiTargetFor:(CGPoint)p tx:(int *)otx ty:(int *)oty {
-    // Candidate inverse transforms for the stock UI's virtual
-    // 640x480 cursor space, runtime-selectable via Q3E_UIMAP:
-    //   'c' centered 4:3 (ui_atoms.c widescreen bias — default)
-    //   'p' pure full-width stretch
-    //   'l' left-anchored 4:3 (bias applied to draw but not
-    //       cursor, or engine-side variants)
-    // Field calibration decides; theory has missed twice.
-    CGSize s = self.bounds.size;
-    CGFloat yscale = s.height / 480.0f;
-    CGFloat bias = 0.5f * (s.width - 640.0f * yscale);
-    if (bias < 0) bias = 0;
-    // Per-mod transform: each UI decides its own widescreen
-    // handling. id-lineage UIs (baseq3/TA/CPMA) center a 4:3
-    // region; UrT's TA-derived-but-forked UI stretches full
-    // width (field report: center-accurate, edge drift).
-    // Env Q3E_UIMAP > per-game default > 'c'.
+// Resolve the active UI's coordinate transform. A51's downloaded UI package
+// replaces the stock baseq3 ui.qvm and halves cursor deltas; compensate only
+// while that exact package is present. An explicit Q3E_UIDELTA remains the
+// highest-priority manual override.
+static char q3e_effective_ui_map_mode(void) {
     char mode = uimap_mode;
     if (!getenv("Q3E_UIMAP")) {
         const char *game = Q3E_CurrentGame();
         NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:
             [NSString stringWithFormat:@"q3e_uimap_%s", game]];
-        if (saved.length) {
-            mode = (char)[saved characterAtIndex:0];
-        } else if (!strcmp(game, "q3ut4")) {
-            mode = 'p';
-        }
+        if (saved.length) mode = (char)[saved characterAtIndex:0];
+        else if (!strcmp(game, "q3ut4")) mode = 'p';
     }
+    return mode;
+}
+
+static BOOL q3e_a51_ui_package_present(void) {
+    NSArray<NSString *> *dirs = NSSearchPathForDirectoriesInDomains(
+        NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *docs = dirs.firstObject;
+    if (!docs.length) return NO;
+    NSString *path = [docs stringByAppendingPathComponent:
+        @"baseq3/zzz-a51-ui.pk3"];
+    return [NSFileManager.defaultManager fileExistsAtPath:path];
+}
+
+static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
+    BOOL a51 = q3e_a51_ui_package_present();
+    if (a51Present) *a51Present = a51;
+    // Q3E_UIDELTA is an explicit developer override and must not be doubled.
+    return (!getenv("Q3E_UIDELTA") && a51) ? uidelta_mult * 2.0f : uidelta_mult;
+}
+
+// The stock UI's virtual 640x480 cursor position for a point in this view, in
+// the delta space the sequencer sends. Shared by tap and hover so the two agree.
+- (void)uiTargetFor:(CGPoint)p tx:(int *)otx ty:(int *)oty {
+    CGSize s = self.bounds.size;
+    CGFloat yscale = s.height / 480.0f;
+    CGFloat bias = 0.5f * (s.width - 640.0f * yscale);
+    if (bias < 0) bias = 0;
+    char mode = q3e_effective_ui_map_mode();
+    float delta = q3e_effective_ui_delta_multiplier(NULL);
     int tx;
     switch (mode) {
         case 'p': tx = (int)(p.x / s.width * 640.0f); break;
@@ -2238,8 +2249,8 @@ static void q3e_kbd_note_touch(void) {
     if (tx > 640) tx = 640;
     if (ty < 0) ty = 0;
     if (ty > 480) ty = 480;
-    *otx = (int)(tx * uidelta_mult);
-    *oty = (int)(ty * uidelta_mult);
+    *otx = (int)(tx * delta);
+    *oty = (int)(ty * delta);
 }
 
 - (void)menuTapAt:(CGPoint)p {
@@ -2252,8 +2263,11 @@ static void q3e_kbd_note_touch(void) {
     hover_anchor_valid = 1;
     hover_anchor_x = tx; hover_anchor_y = ty;
     CGSize s = self.bounds.size;
-    NSLog(@"Q3E tap[%c x%.1f] (%.0f,%.0f)pt -> ui(%d,%d) view %.0fx%.0f pad=%d",
-          uimap_mode, uidelta_mult, p.x, p.y, tx, ty, s.width, s.height, (int)_padConnected);
+    BOOL a51 = NO;
+    float delta = q3e_effective_ui_delta_multiplier(&a51);
+    NSLog(@"Q3E tap[%s map=%c delta=%.1f a51=%d] (%.0f,%.0f)pt -> ui(%d,%d) view %.0fx%.0f pad=%d",
+          Q3E_CurrentGame(), q3e_effective_ui_map_mode(), delta, (int)a51,
+          p.x, p.y, tx, ty, s.width, s.height, (int)_padConnected);
 }
 
 // Hover follow. The first sample (or the first after anything else moved the
