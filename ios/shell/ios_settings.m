@@ -1647,6 +1647,19 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     [rows addArrangedSubview:[self row:@[[self label:@"Auto-switch weapons" size:16 bold:NO], _autoSwitchSwitch]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Simple items" size:16 bold:NO], _simpleItemsSwitch]]];
     [rows addArrangedSubview:[self row:@[[self label:@"FPS counter" size:16 bold:NO], _fpsSwitch]]];
+
+    UIButton *refreshServersBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [refreshServersBtn setTitle:@"Refresh Internet Servers" forState:UIControlStateNormal];
+    refreshServersBtn.titleLabel.font = [UIFont systemFontOfSize:16];
+    [refreshServersBtn setTitleColor:[UIColor colorWithRed:0.4 green:0.8 blue:1.0 alpha:1] forState:UIControlStateNormal];
+    refreshServersBtn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    [refreshServersBtn addTarget:self action:@selector(refreshInternetServersTapped) forControlEvents:UIControlEventTouchUpInside];
+    [rows addArrangedSubview:[self row:@[refreshServersBtn]]];
+    UILabel *serverRefreshHint = [self label:@"Queries the configured master servers (Quake III protocol 68)." size:12 bold:NO];
+    serverRefreshHint.textColor = [UIColor colorWithWhite:0.65 alpha:1.0];
+    serverRefreshHint.numberOfLines = 0;
+    [rows addArrangedSubview:[self row:@[serverRefreshHint]]];
+
 #ifdef Q3E_DEV_BUILD
     // DEV BUILDS ONLY — compiled out of anything with a public version number.
     // Opens the engine console on TCP 27999 to the local network and tailnet,
@@ -2094,6 +2107,12 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     [self dismissViewControllerAnimated:YES completion:^{
         Q3E_Input_BeginLayoutEdit();
     }];
+}
+
+- (void)refreshInternetServersTapped {
+    // Run the engine's normal global-server query against sv_master1..5.
+    // The addresses are populated in Q3E_Settings_ApplyAll.
+    Q3E_QueueCommand("globalservers 0 68");
 }
 
 - (void)dismissSelf {
