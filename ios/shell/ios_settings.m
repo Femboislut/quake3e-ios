@@ -19,6 +19,7 @@ void Q3E_Input_BeginLayoutEdit(void);
 void Q3E_Shell_SetRefreshMode(int mode60);  // 0 = native/120, 1 = 60
 void Q3E_Shell_SetFPSCounter(int enabled);
 void Q3E_Input_SetFireHaptics(int on);       // haptic tap on fire (ios_input.m)
+void Q3E_Input_SetFireDragLook(int on);       // fire touch also drives look (ios_input.m)
 void Q3E_QueueCommand(const char *cmd);      // push a console command to the engine
 #if TARGET_OS_VISION
 void  VK_Set3DSeparation(float sep);         // stereo parallax divisor (renderervk 0006)
@@ -125,6 +126,7 @@ int Q3E_RemoteConsoleEnabled(void) {
 }
 #define DEF_INVERT      @"q3e_invert_look"
 #define DEF_FIRE_HAPTIC @"q3e_fire_haptic"
+#define DEF_FIRE_DRAG_LOOK @"q3e_fire_drag_look"
 #define DEF_SND_VOL     @"q3e_snd_vol"
 #define DEF_MUS_VOL     @"q3e_mus_vol"
 #define DEF_MSAA        @"q3e_msaa"
@@ -991,6 +993,7 @@ void Q3E_Settings_ApplyAll(void) {
     apply_cvar_f("cg_autoswitch", [d objectForKey:DEF_AUTOSWITCH] ? ([d boolForKey:DEF_AUTOSWITCH] ? 1 : 0) : 1);
     apply_cvar_f("cg_simpleItems", [d boolForKey:DEF_SIMPLEITEMS] ? 1 : 0);
     Q3E_Input_SetFireHaptics([d boolForKey:DEF_FIRE_HAPTIC]);
+    Q3E_Input_SetFireDragLook([d objectForKey:DEF_FIRE_DRAG_LOOK] ? [d boolForKey:DEF_FIRE_DRAG_LOOK] : 1);
     apply_cvar_f("s_volume", def_float(DEF_SND_VOL, 0.8f));
     apply_cvar_f("s_musicvolume", def_float(DEF_MUS_VOL, 0.8f));
     // Session category/options + the master gain target (the gain itself ramps
@@ -1242,7 +1245,7 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
 #ifdef Q3E_DEV_BUILD
     UISwitch *_remoteConsoleSwitch;
 #endif
-    UISwitch *_invertSwitch, *_alwaysRunSwitch, *_autoSwitchSwitch, *_simpleItemsSwitch, *_fireHapticSwitch;
+    UISwitch *_invertSwitch, *_alwaysRunSwitch, *_autoSwitchSwitch, *_simpleItemsSwitch, *_fireHapticSwitch, *_fireDragLookSwitch;
     UISegmentedControl *_refreshSeg, *_msaaSeg;
     UISlider *_gyroSlider, *_sensXSlider, *_sensYSlider, *_sizeSlider, *_alphaSlider;
     UISlider *_fovSlider, *_brightSlider, *_sndVolSlider, *_musVolSlider, *_xhairSizeSlider, *_xhairStyleSlider;
@@ -1343,6 +1346,7 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     _autoSwitchSwitch = [self makeSwitch:([d objectForKey:DEF_AUTOSWITCH] ? [d boolForKey:DEF_AUTOSWITCH] : YES)];
     _simpleItemsSwitch = [self makeSwitch:[d boolForKey:DEF_SIMPLEITEMS]];
     _fireHapticSwitch = [self makeSwitch:[d boolForKey:DEF_FIRE_HAPTIC]];
+    _fireDragLookSwitch = [self makeSwitch:([d objectForKey:DEF_FIRE_DRAG_LOOK] ? [d boolForKey:DEF_FIRE_DRAG_LOOK] : YES)];
     _sndVolSlider = [self makeSlider:0.0 max:1.0 value:def_float(DEF_SND_VOL, 0.8f)];
     _sndVolValue = [self label:@"" size:14 bold:NO];
     _musVolSlider = [self makeSlider:0.0 max:1.0 value:def_float(DEF_MUS_VOL, 0.8f)];
@@ -1632,6 +1636,7 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     [rows addArrangedSubview:[self row:@[[self label:@"Controls size" size:16 bold:NO], _sizeSlider, _sizeValue]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Controls opacity" size:16 bold:NO], _alphaSlider, _alphaValue]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Fire haptics" size:16 bold:NO], _fireHapticSwitch]]];
+    [rows addArrangedSubview:[self row:@[[self label:@"Aim while holding fire" size:16 bold:NO], _fireDragLookSwitch]]];
     // Replaces "Left-handed layout": the move stick's zone is draggable now, so
     // stick-on-the-right is one drag — and so is every position in between.
     UIButton *layoutBtn = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -1841,6 +1846,8 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     [d setBool:_autoSwitchSwitch.on forKey:DEF_AUTOSWITCH];
     [d setBool:_simpleItemsSwitch.on forKey:DEF_SIMPLEITEMS];
     [d setBool:_fireHapticSwitch.on forKey:DEF_FIRE_HAPTIC];
+    [d setBool:_fireDragLookSwitch.on forKey:DEF_FIRE_DRAG_LOOK];
+    Q3E_Input_SetFireDragLook(_fireDragLookSwitch.on);
     [d setFloat:_sndVolSlider.value forKey:DEF_SND_VOL];
     [d setFloat:_musVolSlider.value forKey:DEF_MUS_VOL];
     [d setFloat:_masterVolSlider.value forKey:Q3E_DEF_MASTER_VOL];
