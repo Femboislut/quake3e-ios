@@ -45,7 +45,7 @@ The build uses the pinned Quake3e upstream revision and applies this fork's patc
 
 - **Original iOS port:** [rebelancap/quake3e-ios](https://github.com/rebelancap/quake3e-ios)
 - **Engine:** [Quake3e](https://github.com/ec-/Quake3e), with ioquake3 and id Software's Quake III Arena source
-- **AI-assisted development:** ChatGPT assisted with investigation, debugging, code changes, and build workflow work in this fork.
+- **AI-assisted development:** Codex assisted with investigation, debugging, code changes, and build workflow work in this fork.
 - Quake III Arena © id Software. This project is not affiliated with or endorsed by id Software.
 
 This project is licensed under **GNU GPL v2**; see [COPYING](COPYING).
