@@ -1257,6 +1257,9 @@ static void q3e_kbd_repeat_frame(void) {
 }
 
 @interface Q3EInputView () <UIKeyInput>
+- (CGFloat)controlScaleForIdent:(NSString *)ident;
+- (CGFloat)menuHitRadiusForIdent:(NSString *)ident;
+- (void)syncEditorSelection;
 @end
 
 @implementation Q3EInputView {
@@ -2521,8 +2524,8 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     _editSizeSlider.enabled = _selectedCtl != nil; _editAlphaSlider.enabled = _selectedCtl != nil;
     _editSizeSlider.value = _selectedCtl ? _selectedCtl.sizeScale : 1.0f;
     _editAlphaSlider.value = _selectedCtl ? _selectedCtl.alphaScale : 1.0f;
-    _editSizePct.text = [NSString stringWithFormat:@"%.0f%%", _editSizeSlider.value * 100.0f];
-    _editAlphaPct.text = [NSString stringWithFormat:@"%.0f%%", _editAlphaSlider.value * 100.0f];
+    _editSizePct.text = [NSString stringWithFormat:@"SIZE %.0f%%", _editSizeSlider.value * 100.0f];
+    _editAlphaPct.text = [NSString stringWithFormat:@"OPACITY %.0f%%", _editAlphaSlider.value * 100.0f];
 }
 - (void)editScaleChanged:(UISlider *)sl {
     if (!_selectedCtl) return;
