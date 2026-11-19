@@ -117,7 +117,8 @@ static NSString *q3e_pos_key(NSString *ident, const char *axis) {
 // mapping/signs are a first guess — tune with hands-on feedback before
 // promoting to a default-on setting.
 static float gyro_scale = 0.0f;
-static int gyro_invert = 0;
+static int gyro_invert_x = 0;
+static int gyro_invert_y = 1;
 static CMMotionManager *gyro_mgr;
 static float gyro_accx, gyro_accy;
 void Q3E_QueueMouse(int dx, int dy);
@@ -141,7 +142,7 @@ static void gyro_poll(int menuMode, float dt) {
     // the 120 Hz reference) — otherwise 120 Hz samples twice as often as
     // 60 Hz and doubles gyro sensitivity.
     const float look_dt = dt * 120.0f;
-    const float g = gyro_scale * 8.0f * look_dt * (gyro_invert ? -1.0f : 1.0f);
+    const float g = gyro_scale * 8.0f * look_dt;
 #if TARGET_OS_VISION
     // Vision Pro headset frame: rotation about device Y ≈ head yaw (screen-
     // horizontal), about device X ≈ head pitch (screen-vertical) — the OPPOSITE
@@ -149,15 +150,16 @@ static void gyro_poll(int menuMode, float dt) {
     // handheld mapping produced a 90° cross-axis (look left → aim up, look up →
     // aim left). Swap the components so head yaw drives view yaw and head pitch
     // drives view pitch (mirror-aim). Signs kept negative so left→left, up→up.
-    gyro_accx += (float)(-m.rotationRate.y) * g;   // yaw
-    gyro_accy += (float)(-m.rotationRate.x) * g;   // pitch
+    gyro_accx += (float)(-m.rotationRate.y) * g * (gyro_invert_x ? -1.0f : 1.0f); // yaw
+    gyro_accy += (float)(-m.rotationRate.x) * g * (gyro_invert_y ? -1.0f : 1.0f); // pitch
 #else
     // landscape-right handheld: rotation about device X ≈ screen-vertical (yaw),
     // about device Y ≈ screen-horizontal (pitch); rad/s → mouse counts.
-    gyro_accx += (float)(-m.rotationRate.x) * g;
-    gyro_accy += (float)(-m.rotationRate.y) * g;
+    gyro_accx += (float)(-m.rotationRate.x) * g * (gyro_invert_x ? -1.0f : 1.0f);
+    // iPhone landscape pitch needs the opposite raw sign for Quake mouse-Y.
+    // The per-axis switch reverses this corrected default independently.
+    gyro_accy += (float)(m.rotationRate.y) * g * (gyro_invert_y ? -1.0f : 1.0f);
 #endif
-    if (gyro_invert) { gyro_accx = -gyro_accx; gyro_accy = -gyro_accy; }
     int dx = (int)gyro_accx, dy = (int)gyro_accy;
     if (dx || dy) {
         gyro_accx -= dx; gyro_accy -= dy;
@@ -930,8 +932,10 @@ void Q3E_Input_SetControlStyle(float scale, float alpha) {
     [NSNotificationCenter.defaultCenter postNotificationName:@"Q3EControlStyleChanged" object:nil];
 }
 
-void Q3E_Input_SetGyro(int enabled, float scale, int invert) {
-    gyro_invert = invert ? 1 : 0;
+void Q3E_Input_SetGyro(int enabled, float scale, int invertX, int invertY) {
+    gyro_invert_x = invertX ? 1 : 0;
+    gyro_invert_y = invertY ? 1 : 0;
+    gyro_accx = gyro_accy = 0.0f;
     if (enabled) {
         gyro_scale = scale;
         if (!gyro_mgr) {
