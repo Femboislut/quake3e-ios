@@ -14,7 +14,6 @@
 void Q3E_Input_SetGyro(int enabled, float scale, int invertX, int invertY);
 void Q3E_Input_SetTouchSens(float sx, float sy);
 void Q3E_Input_SetControlStyle(float scale, float alpha);
-void Q3E_Input_SetUITouchOffset(float x, float y);
 void Q3E_EnableConsoleBridge(void);   // ios_glue.c — opens the port AND arms the drain
 void Q3E_Input_BeginLayoutEdit(void);
 void Q3E_Shell_SetRefreshMode(int mode60);  // 0 = native/120, 1 = 60
@@ -110,8 +109,6 @@ void  Q3E_VR_ReapplyRenderScale(void);
 #define DEF_SENS_Y      @"q3e_sens_y"
 #define DEF_CTL_SCALE   @"q3e_ctl_scale"
 #define DEF_CTL_ALPHA   @"q3e_ctl_alpha"
-#define DEF_UI_TOUCH_X   @"q3e_ui_touch_offset_x"
-#define DEF_UI_TOUCH_Y   @"q3e_ui_touch_offset_y"
 #define DEF_LEFTY       @"q3e_lefty"
 #define DEF_REFRESH_60  @"q3e_refresh_60"
 #define DEF_FPS_COUNTER @"q3e_fps_counter"
@@ -983,7 +980,10 @@ void Q3E_Settings_ApplyAll(void) {
     Q3E_Input_SetTouchSens(def_float(DEF_SENS_X, legacy) * Q3E_SENS_APPLY,
                            def_float(DEF_SENS_Y, legacy) * Q3E_SENS_APPLY);
     Q3E_Input_SetControlStyle(def_float(DEF_CTL_SCALE, 1.0f), def_float(DEF_CTL_ALPHA, 1.0f));
-    Q3E_Input_SetUITouchOffset(def_float(DEF_UI_TOUCH_X, 0.0f), def_float(DEF_UI_TOUCH_Y, 0.0f));
+    // Retire the old manual menu-coordinate calibration keys; mapping is now
+    // derived from the renderer's actual viewport dimensions.
+    [d removeObjectForKey:@"q3e_ui_touch_offset_x"];
+    [d removeObjectForKey:@"q3e_ui_touch_offset_y"];
     Q3E_Shell_SetRefreshMode([d boolForKey:DEF_REFRESH_60]);
     Q3E_Shell_SetFPSCounter([d boolForKey:DEF_FPS_COUNTER]);
 
@@ -1250,9 +1250,9 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
 #endif
     UISwitch *_invertSwitch, *_alwaysRunSwitch, *_autoSwitchSwitch, *_simpleItemsSwitch, *_fireHapticSwitch, *_fireDragLookSwitch;
     UISegmentedControl *_refreshSeg, *_msaaSeg;
-    UISlider *_gyroSlider, *_sensXSlider, *_sensYSlider, *_sizeSlider, *_alphaSlider, *_uiTouchXSlider, *_uiTouchYSlider;
+    UISlider *_gyroSlider, *_sensXSlider, *_sensYSlider, *_sizeSlider, *_alphaSlider;
     UISlider *_fovSlider, *_brightSlider, *_sndVolSlider, *_musVolSlider, *_xhairSizeSlider, *_xhairStyleSlider;
-    UILabel *_gyroValue, *_sensXValue, *_sensYValue, *_sizeValue, *_alphaValue, *_uiTouchXValue, *_uiTouchYValue;
+    UILabel *_gyroValue, *_sensXValue, *_sensYValue, *_sizeValue, *_alphaValue;
     UILabel *_fovValue, *_brightValue, *_sndVolValue, *_musVolValue, *_xhairSizeValue, *_xhairStyleValue;
     UISlider *_masterVolSlider;
     UILabel *_masterVolValue;
@@ -1326,10 +1326,6 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     _sizeValue = [self label:@"" size:14 bold:NO];
     _alphaSlider = [self makeSlider:0.4 max:1.6 value:def_float(DEF_CTL_ALPHA, 1.0f)];
     _alphaValue = [self label:@"" size:14 bold:NO];
-    _uiTouchXSlider = [self makeSlider:-160 max:160 value:def_float(DEF_UI_TOUCH_X, 0.0f)];
-    _uiTouchXValue = [self label:@"" size:14 bold:NO];
-    _uiTouchYSlider = [self makeSlider:-160 max:160 value:def_float(DEF_UI_TOUCH_Y, 0.0f)];
-    _uiTouchYValue = [self label:@"" size:14 bold:NO];
 #if TARGET_OS_VISION
     // No number: UIScreen (and the panel's max rate) isn't queryable on visionOS,
     // and hardcoding one misled — M5 Vision Pro runs 120 Hz, earlier panels 90.
@@ -1642,8 +1638,6 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     [rows addArrangedSubview:[self section:@"TOUCH CONTROLS"]];
     [rows addArrangedSubview:[self row:@[[self label:@"Controls size" size:16 bold:NO], _sizeSlider, _sizeValue]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Controls opacity" size:16 bold:NO], _alphaSlider, _alphaValue]]];
-    [rows addArrangedSubview:[self row:@[[self label:@"Menu touch horizontal offset" size:16 bold:NO], _uiTouchXSlider, _uiTouchXValue]]];
-    [rows addArrangedSubview:[self row:@[[self label:@"Menu touch vertical offset" size:16 bold:NO], _uiTouchYSlider, _uiTouchYValue]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Fire haptics" size:16 bold:NO], _fireHapticSwitch]]];
     [rows addArrangedSubview:[self row:@[[self label:@"Aim while holding fire" size:16 bold:NO], _fireDragLookSwitch]]];
     // Replaces "Left-handed layout": the move stick's zone is draggable now, so
@@ -1746,8 +1740,6 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     _sensYValue.text = [NSString stringWithFormat:@"%.1f", _sensYSlider.value];
     _sizeValue.text = [NSString stringWithFormat:@"%.0f%%", _sizeSlider.value * 100];
     _alphaValue.text = [NSString stringWithFormat:@"%.0f%%", _alphaSlider.value * 100];
-    _uiTouchXValue.text = [NSString stringWithFormat:@"%+.0f pt", _uiTouchXSlider.value];
-    _uiTouchYValue.text = [NSString stringWithFormat:@"%+.0f pt", _uiTouchYSlider.value];
     _fovValue.text = [NSString stringWithFormat:@"%.0f", _fovSlider.value];
     _brightValue.text = [NSString stringWithFormat:@"%.1f", _brightSlider.value];
     _sndVolValue.text = [NSString stringWithFormat:@"%.0f%%", _sndVolSlider.value * 100];
@@ -1842,9 +1834,6 @@ static __weak Q3ESettingsController *q3e_vr_liveSheet = nil;
     [d setFloat:_sensYSlider.value forKey:DEF_SENS_Y];
     [d setFloat:_sizeSlider.value forKey:DEF_CTL_SCALE];
     [d setFloat:_alphaSlider.value forKey:DEF_CTL_ALPHA];
-    [d setFloat:_uiTouchXSlider.value forKey:DEF_UI_TOUCH_X];
-    [d setFloat:_uiTouchYSlider.value forKey:DEF_UI_TOUCH_Y];
-    Q3E_Input_SetUITouchOffset(_uiTouchXSlider.value, _uiTouchYSlider.value);
     [d setBool:(_refreshSeg.selectedSegmentIndex == 0) forKey:DEF_REFRESH_60];
     [d setBool:_fpsSwitch.on forKey:DEF_FPS_COUNTER];
 #ifdef Q3E_DEV_BUILD
