@@ -1796,9 +1796,16 @@ static void q3e_no_implicit_actions(CALayer *l) {
         l.strokeColor = self->_editing ? [UIColor colorWithRed:1 green:0.85 blue:0.4 alpha:0.95].CGColor
             : [UIColor colorWithWhite:1.0 alpha:MIN(alpha + 0.15, 0.95)].CGColor;
     };
-    style(_stickBase, k, 0.14 * ctl_alpha);
-    style(_stickNub, k, 0.28 * ctl_alpha);
-    for (Q3EControl *c in _controls) style((CAShapeLayer *)c.layer, k * c.sizeScale, c.baseAlpha * ctl_alpha * c.alphaScale);
+    CGFloat stickK = k;
+    for (Q3EControl *c in _controls) {
+        if ([c.ident isEqualToString:@"stick"]) { stickK *= c.sizeScale; break; }
+    }
+    style(_stickBase, stickK, 0.14 * ctl_alpha);
+    style(_stickNub, stickK, 0.28 * ctl_alpha);
+    for (Q3EControl *c in _controls) {
+        style((CAShapeLayer *)c.layer, k * c.sizeScale, c.baseAlpha * ctl_alpha);
+        c.layer.opacity = c.alphaScale;
+    }
     [self setNeedsLayout];
 }
 
@@ -1853,8 +1860,9 @@ static void q3e_no_implicit_actions(CALayer *l) {
     [d setBool:NO forKey:DEF_LAYOUT_SET];
     [d setFloat:1.0f forKey:@"q3e_ctl_scale"];
     ctl_scale = 1.0f;
+    [self loadControlPositions];
     [self applyControlStyle];
-    [self loadControlPositions]; _selectedCtl = nil; [self syncEditorSelection];
+    _selectedCtl = nil; [self syncEditorSelection];
     NSLog(@"Q3E touch layout reset to defaults");
 }
 
@@ -2460,12 +2468,11 @@ static float q3e_effective_ui_delta_multiplier(BOOL *a51Present) {
     UIButton *done  = pill(@"checkmark", [UIColor colorWithRed:0.18 green:0.78 blue:0.34 alpha:0.95], @selector(endEditingLayout));
 
     UISlider *sl = [UISlider new];
-    sl.minimumValue = CTL_SCALE_MIN; sl.maximumValue = CTL_SCALE_MAX; sl.value = ctl_scale;
+    sl.minimumValue = 0.5f; sl.maximumValue = 2.0f; sl.value = 1.0f;
     sl.minimumTrackTintColor = [UIColor colorWithWhite:1 alpha:0.9];
     sl.translatesAutoresizingMaskIntoConstraints = NO;
     [sl addTarget:self action:@selector(editScaleChanged:) forControlEvents:UIControlEventValueChanged];
     [bar addSubview:sl];
-    [sl addTarget:self action:@selector(editScaleChanged:) forControlEvents:UIControlEventValueChanged];
     _editSizeSlider = sl;
 
     UILabel *pct = [UILabel new];
