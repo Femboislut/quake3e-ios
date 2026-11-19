@@ -1048,6 +1048,20 @@ void Q3E_ReleaseRenderSizeOverride(const char *who) {
 // skips the ones it took while the generation was moving.
 volatile int q3e_render_gen = 0;
 volatile int q3e_render_live = 0;
+static volatile int q3e_active_render_width = 0;
+static volatile int q3e_active_render_height = 0;
+
+// The UI VM lays out its 640x480 coordinate space against glconfig's render
+// extent, not necessarily the physical screen. Touch mapping uses these same
+// dimensions, then converts UIKit points into render pixels.
+int Q3E_RenderWidth(void) {
+	int w = q3e_active_render_width;
+	return q3e_render_live && w > 0 ? w : Q3E_LayerWidth();
+}
+int Q3E_RenderHeight(void) {
+	int h = q3e_active_render_height;
+	return q3e_render_live && h > 0 ? h : Q3E_LayerHeight();
+}
 
 // Called by the shell immediately BEFORE it queues a vid_restart, so the window
 // between "the restart is coming" and "the renderer has torn down" is covered
@@ -1089,6 +1103,8 @@ void VKimp_Init(glconfig_t *config) {
 		config->vidWidth = q3e_render_override_w;
 		config->vidHeight = q3e_render_override_h;
 	}
+	q3e_active_render_width = config->vidWidth;
+	q3e_active_render_height = config->vidHeight;
 	config->windowAspect = (float)config->vidWidth / (float)config->vidHeight;
 	config->colorBits = 24;
 	config->depthBits = 24;
